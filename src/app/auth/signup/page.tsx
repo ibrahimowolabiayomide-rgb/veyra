@@ -1,12 +1,12 @@
 'use client';
-import { useState } from 'react';
+import { Suspense, useState } from 'react';
 import Link from 'next/link';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Eye, EyeOff, Mail, Lock, User, ShoppingBag, Store } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
 import toast from 'react-hot-toast';
 
-export default function SignupPage() {
+function SignupContent() {
   const searchParams = useSearchParams();
   const [role, setRole] = useState<'customer' | 'seller'>(searchParams.get('seller') === 'true' ? 'seller' : 'customer');
   const [fullName, setFullName] = useState('');
@@ -124,5 +124,13 @@ export default function SignupPage() {
         </p>
       </div>
     </div>
+  );
+}
+
+export default function SignupPage() {
+  return (
+    <Suspense fallback={<div>Loading...</div>}>
+      <SignupContent />
+    </Suspense>
   );
 }
