@@ -6,6 +6,3 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
   );
 }
-
-// Typed database helper
-export type { Database } from './database.types';
