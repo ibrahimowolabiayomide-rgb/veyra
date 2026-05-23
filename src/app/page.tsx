@@ -1,349 +1,503 @@
 'use client';
+import { useState, useEffect, useRef } from 'react';
 import Link from 'next/link';
-import { useEffect, useRef } from 'react';
-import { Sparkles, ArrowRight, Star, TrendingUp, ShoppingBag, Zap } from 'lucide-react';
+import { useRouter } from 'next/navigation';
+import { ArrowRight, Play, Star, TrendingUp, Sparkles, ChevronLeft, ChevronRight } from 'lucide-react';
+import { createClient } from '@/lib/supabase';
+import SplashScreen from '@/components/SplashScreen';
 
-const TRENDING_PRODUCTS = [
-  { id: '1', name: 'Oversized Tech Hoodie', price: 12500, seller: 'NaijaDrip Co.', rating: 4.9, tag: 'Trending', bg: 'from-purple-900/40 to-purple-800/20', accent: '#8B5CF6' },
-  { id: '2', name: 'Cargo Street Pants', price: 8999, seller: 'UrbanThreads', rating: 4.7, tag: 'New', bg: 'from-blue-900/40 to-blue-800/20', accent: '#3B82F6' },
-  { id: '3', name: 'Premium Agbada Set', price: 45000, seller: 'Lagos Luxe', rating: 5.0, tag: 'Premium', bg: 'from-amber-900/40 to-amber-800/20', accent: '#C8A96B' },
-  { id: '4', name: 'Chunky Platform Sneakers', price: 18750, seller: 'KickZone NG', rating: 4.8, tag: '🔥 Hot', bg: 'from-green-900/40 to-green-800/20', accent: '#4ade80' },
-];
-
-const STATS = [
-  { num: '12K+', label: 'Active Shoppers' },
-  { num: '3K+', label: 'Verified Sellers' },
-  { num: '98K+', label: 'Products' },
-  { num: '4.9★', label: 'Platform Rating' },
-  { num: '₦2B+', label: 'In Sales' },
+const HERO_SLIDES = [
+  {
+    title: 'Discover Style\nBeyond Fashion',
+    sub: 'AI-curated looks from Nigeria\'s top creators',
+    bg: 'linear-gradient(135deg, #0a0015 0%, #1a0030 50%, #0d0020 100%)',
+    accent: '#8B5CF6',
+    img: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=800&q=80',
+  },
+  {
+    title: 'Luxury\nMeets Street',
+    sub: 'Premium fashion for the bold and the beautiful',
+    bg: 'linear-gradient(135deg, #0a0a00 0%, #1a1500 50%, #0d0d00 100%)',
+    accent: '#C8A96B',
+    img: 'https://images.unsplash.com/photo-1509631179647-0177331693ae?w=800&q=80',
+  },
+  {
+    title: 'Native Wear\nReimagined',
+    sub: 'Traditional styles with a modern edge',
+    bg: 'linear-gradient(135deg, #000a15 0%, #001530 50%, #000d20 100%)',
+    accent: '#3B82F6',
+    img: 'https://images.unsplash.com/photo-1594938298-ab3c1d7e1a34?w=800&q=80',
+  },
 ];
 
 const CATEGORIES = [
-  { name: 'Streetwear', icon: '🧢', slug: 'streetwear' },
-  { name: 'Luxury', icon: '✦', slug: 'luxury' },
-  { name: 'Sneakers', icon: '👟', slug: 'sneakers' },
-  { name: 'Native Wear', icon: '👘', slug: 'native-wear' },
-  { name: 'Hoodies', icon: '🧥', slug: 'hoodies' },
-  { name: 'Women', icon: '👗', slug: 'women' },
-  { name: 'Accessories', icon: '💍', slug: 'accessories' },
+  { name: 'Streetwear', slug: 'streetwear', img: 'https://images.unsplash.com/photo-1556821074-0ebcbdef405d?w=400&q=80', color: '#8B5CF6' },
+  { name: 'Luxury', slug: 'luxury', img: 'https://images.unsplash.com/photo-1548036361-0ef7b26e76e3?w=400&q=80', color: '#C8A96B' },
+  { name: 'Sneakers', slug: 'sneakers', img: 'https://images.unsplash.com/photo-1542291526-ae9af0b1c8ab?w=400&q=80', color: '#4ade80' },
+  { name: 'Native Wear', slug: 'native-wear', img: 'https://images.unsplash.com/photo-1594938298-ab3c1d7e1a34?w=400&q=80', color: '#f97316' },
+  { name: 'Women', slug: 'women', img: 'https://images.unsplash.com/photo-1515886657613-9f3515b0c78f?w=400&q=80', color: '#f472b6' },
+  { name: 'Accessories', slug: 'accessories', img: 'https://images.unsplash.com/photo-1611652849001-3ef864308929?w=400&q=80', color: '#60a5fa' },
 ];
 
 export default function HomePage() {
-  const heroRef = useRef<HTMLDivElement>(null);
+  const [showSplash, setShowSplash] = useState(false);
+  const [heroSlide, setHeroSlide] = useState(0);
+  const [products, setProducts] = useState<any[]>([]);
+  const [featured, setFeatured] = useState<any[]>([]);
+  const [trending, setTrending] = useState<any[]>([]);
+  const router = useRouter();
+  const supabase = createClient();
+  const scrollRefs = useRef<Record<string, HTMLDivElement | null>>({});
 
   useEffect(() => {
-    const obs = new IntersectionObserver((entries) => {
-      entries.forEach((e) => {
-        if (e.isIntersecting) {
-          (e.target as HTMLElement).style.opacity = '1';
-          (e.target as HTMLElement).style.transform = 'translateY(0)';
-        }
-      });
-    }, { threshold: 0.1 });
-
-    document.querySelectorAll('[data-animate]').forEach((el) => {
-      (el as HTMLElement).style.opacity = '0';
-      (el as HTMLElement).style.transform = 'translateY(24px)';
-      (el as HTMLElement).style.transition = 'opacity 0.6s ease, transform 0.6s ease';
-      obs.observe(el);
-    });
-    return () => obs.disconnect();
+    // Show splash only on first visit
+    const seen = sessionStorage.getItem('veyra_splash_seen');
+    if (!seen) { setShowSplash(true); sessionStorage.setItem('veyra_splash_seen', '1'); }
+    fetchProducts();
+    const interval = setInterval(() => setHeroSlide(s => (s + 1) % HERO_SLIDES.length), 5000);
+    return () => clearInterval(interval);
   }, []);
 
-  return (
-    <div className="min-h-screen">
-      {/* ── HERO ── */}
-      <section ref={heroRef} className="relative min-h-screen flex items-center px-6 lg:px-16 pt-[70px] overflow-hidden">
-        {/* Background effects */}
-        <div className="absolute inset-0 pointer-events-none">
-          <div className="absolute inset-0"
-            style={{ background: 'radial-gradient(ellipse 80% 60% at 70% 50%, rgba(139,92,246,0.1) 0%, transparent 60%)' }} />
-          <div className="absolute inset-0"
-            style={{ background: 'radial-gradient(ellipse 50% 50% at 20% 30%, rgba(59,130,246,0.06) 0%, transparent 50%)' }} />
-          <div className="absolute inset-0"
-            style={{
-              backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
-              backgroundSize: '80px 80px',
-            }} />
-        </div>
+  const fetchProducts = async () => {
+    const { data } = await supabase
+      .from('products')
+      .select('id, name, price, compare_price, thumbnail, images, rating, sold_count, is_featured, categories(name,slug), stores(store_name)')
+      .eq('is_approved', true)
+      .eq('is_active', true)
+      .order('created_at', { ascending: false })
+      .limit(32);
 
-        <div className="relative z-10 w-full max-w-[1400px] mx-auto grid lg:grid-cols-2 gap-12 items-center py-20">
-          {/* Left: copy */}
-          <div>
-            <div className="inline-flex items-center gap-2 bg-purple-500/10 border border-purple-500/25 rounded-full px-4 py-1.5 text-xs text-purple-300 uppercase tracking-widest mb-8">
-              <span className="w-1.5 h-1.5 rounded-full bg-purple-400 animate-pulse" />
-              AI-Powered Fashion Platform
+    const all = data || [];
+    setProducts(all);
+    setFeatured(all.filter((p: any) => p.is_featured).slice(0, 8));
+    setTrending(all.sort((a: any, b: any) => b.sold_count - a.sold_count).slice(0, 10));
+  };
+
+  const scroll = (key: string, dir: 'left' | 'right') => {
+    const el = scrollRefs.current[key];
+    if (el) el.scrollBy({ left: dir === 'left' ? -320 : 320, behavior: 'smooth' });
+  };
+
+  const slide = HERO_SLIDES[heroSlide];
+
+  return (
+    <>
+      {showSplash && <SplashScreen onComplete={() => setShowSplash(false)} />}
+
+      <div className="min-h-screen" style={{ background: '#050505' }}>
+
+        {/* ── CINEMATIC HERO ── */}
+        <section style={{
+          position: 'relative', height: '100vh', overflow: 'hidden',
+          transition: 'background 1s ease',
+          background: slide.bg,
+        }}>
+          {/* Background image */}
+          <div style={{
+            position: 'absolute', right: 0, top: 0,
+            width: '55%', height: '100%',
+            opacity: 0.35,
+            transition: 'opacity 0.8s ease',
+          }}>
+            <img src={slide.img} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            <div style={{
+              position: 'absolute', inset: 0,
+              background: `linear-gradient(90deg, ${slide.bg.split(',')[0].replace('linear-gradient(135deg, ', '')} 0%, transparent 60%)`,
+            }} />
+          </div>
+
+          {/* Ambient glow */}
+          <div style={{
+            position: 'absolute', inset: 0, pointerEvents: 'none',
+            background: `radial-gradient(ellipse 60% 60% at 30% 50%, ${slide.accent}18 0%, transparent 60%)`,
+            transition: 'background 1s ease',
+          }} />
+
+          {/* Content */}
+          <div style={{
+            position: 'relative', zIndex: 2,
+            display: 'flex', flexDirection: 'column', justifyContent: 'center',
+            height: '100%', padding: '0 6rem',
+            paddingTop: 70,
+          }}>
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              background: `${slide.accent}18`, border: `1px solid ${slide.accent}40`,
+              borderRadius: 50, padding: '6px 16px',
+              marginBottom: 24, width: 'fit-content',
+            }}>
+              <div style={{ width: 6, height: 6, borderRadius: '50%', background: slide.accent, animation: 'pulse 2s infinite' }} />
+              <span style={{ fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: slide.accent }}>
+                AI-Powered Fashion
+              </span>
             </div>
 
-            <h1 className="font-display text-5xl md:text-6xl lg:text-7xl font-light leading-[1.05] mb-6">
-              Fashion Meets<br />
-              <span className="italic" style={{ color: 'transparent', WebkitTextStroke: '1px #C8A96B' }}>
-                Intelligence.
-              </span>
+            <h1 style={{
+              fontFamily: 'serif', fontSize: 'clamp(3rem, 6vw, 5.5rem)',
+              fontWeight: 300, lineHeight: 1.05, color: '#fff',
+              marginBottom: 20,
+              whiteSpace: 'pre-line',
+              textShadow: '0 0 80px rgba(0,0,0,0.5)',
+            }}>
+              {slide.title}
             </h1>
 
-            <p className="text-muted text-lg font-light max-w-md mb-10 leading-relaxed">
-              Discover AI-curated fashion from top creators across Nigeria. Your personal stylist, powered by intelligence.
+            <p style={{ fontSize: '1.1rem', color: 'rgba(255,255,255,0.55)', marginBottom: 40, maxWidth: 480, lineHeight: 1.6 }}>
+              {slide.sub}
             </p>
 
-            <div className="flex flex-wrap gap-3 mb-12">
-              <Link href="/marketplace" className="btn-primary text-base">
+            <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
+              <Link href="/marketplace" style={{
+                background: `linear-gradient(135deg, #C8A96B, #A8872A)`,
+                color: '#0B0B0B', border: 'none',
+                padding: '14px 32px', borderRadius: 50,
+                fontSize: '0.9rem', fontWeight: 600,
+                letterSpacing: '0.04em', cursor: 'pointer',
+                textDecoration: 'none', display: 'inline-flex',
+                alignItems: 'center', gap: 8,
+                transition: 'transform 0.2s, box-shadow 0.2s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-2px)'; (e.currentTarget as HTMLElement).style.boxShadow = '0 8px 30px rgba(200,169,107,0.3)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.boxShadow = 'none'; }}
+              >
                 Shop Now <ArrowRight size={16} />
               </Link>
-              <Link href="/auth/signup?seller=true" className="btn-secondary text-base">
-                <Sparkles size={16} className="text-gold" /> Become a Seller
+              <Link href="/ai-stylist" style={{
+                background: 'transparent',
+                border: '1px solid rgba(255,255,255,0.2)',
+                color: '#fff', padding: '14px 32px',
+                borderRadius: 50, fontSize: '0.9rem',
+                letterSpacing: '0.04em', cursor: 'pointer',
+                textDecoration: 'none', display: 'inline-flex',
+                alignItems: 'center', gap: 8,
+                transition: 'all 0.2s',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.08)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'transparent'; }}
+              >
+                <Sparkles size={16} style={{ color: '#a78bfa' }} /> AI Stylist
               </Link>
             </div>
 
-            {/* Trust row */}
-            <div className="flex items-center gap-6 text-sm text-muted">
-              <span className="flex items-center gap-1.5"><Star size={14} className="text-gold" /> 4.9 rated</span>
-              <span className="flex items-center gap-1.5"><ShoppingBag size={14} className="text-gold" /> 98K+ products</span>
-              <span className="flex items-center gap-1.5"><Zap size={14} className="text-gold" /> AI-powered</span>
-            </div>
-          </div>
-
-          {/* Right: floating cards */}
-          <div className="hidden lg:flex flex-col gap-4 items-end">
-            {[
-              { label: 'Trending Now', value: 'Oversized Streetwear', sub: '↑ 42% this week', style: { animation: 'float 4s ease-in-out infinite' } },
-              { label: 'AI Match', value: '98.4% Style Score', sub: '✦ Powered by AI', badge: true, style: { animation: 'float 4s 1.3s ease-in-out infinite' } },
-              { label: 'New Arrivals', value: '240+ Items Today', sub: 'From 180 verified sellers', style: { animation: 'float 4s 2.6s ease-in-out infinite' } },
-            ].map((card, i) => (
-              <div key={i} className="glass rounded-2xl p-4 w-[240px]" style={card.style}>
-                <p className="text-[11px] uppercase tracking-widest text-muted mb-1">{card.label}</p>
-                <p className="font-medium text-white">{card.value}</p>
-                {card.badge ? (
-                  <span className="mt-2 inline-flex items-center gap-1 text-[11px] text-purple-300 bg-purple-500/15 border border-purple-500/25 rounded-full px-2.5 py-0.5">
-                    {card.sub}
-                  </span>
-                ) : (
-                  <p className="text-[12px] text-gold mt-0.5">{card.sub}</p>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── STATS BAR ── */}
-      <div className="bg-[#111] border-y border-white/07 py-6 px-6">
-        <div className="max-w-[1400px] mx-auto flex flex-wrap justify-around gap-6">
-          {STATS.map((s) => (
-            <div key={s.label} className="text-center">
-              <div className="font-display text-2xl font-semibold text-white">{s.num}</div>
-              <div className="text-[11px] uppercase tracking-widest text-muted mt-0.5">{s.label}</div>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* ── AI STYLIST PROMO ── */}
-      <section className="px-6 lg:px-16 py-24 max-w-[1400px] mx-auto" data-animate>
-        <div className="relative rounded-3xl overflow-hidden border border-white/08 p-8 md:p-14"
-          style={{ background: 'linear-gradient(135deg, rgba(139,92,246,0.08) 0%, rgba(59,130,246,0.05) 100%)' }}>
-          <div className="max-w-xl">
-            <div className="section-label">AI Intelligence</div>
-            <h2 className="font-display text-4xl md:text-5xl font-light mb-4">
-              Your personal<br /><span className="italic text-purple-400">AI stylist</span>
-            </h2>
-            <p className="text-muted mb-6 leading-relaxed">
-              Describe what you want in plain English. Our AI curates complete outfits tailored to your taste, body, and budget in seconds.
-            </p>
-            <Link href="/ai-stylist" className="btn-primary">
-              Try AI Stylist <Sparkles size={15} />
-            </Link>
-          </div>
-          <div className="absolute right-8 bottom-8 hidden md:block opacity-60 text-8xl font-display font-light text-purple-500/20 select-none">
-            ✦ AI
-          </div>
-        </div>
-      </section>
-
-      {/* ── CATEGORIES ── */}
-      <section className="px-6 lg:px-16 pb-12 max-w-[1400px] mx-auto">
-        <div className="section-label" data-animate>Shop by Category</div>
-        <div className="flex flex-wrap gap-3 mt-2">
-          {CATEGORIES.map((cat) => (
-            <Link key={cat.slug} href={`/marketplace?category=${cat.slug}`}
-              className="glass hover:border-gold/30 hover:text-gold transition-all rounded-full px-4 py-2 text-sm text-muted flex items-center gap-2">
-              <span>{cat.icon}</span> {cat.name}
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {/* ── TRENDING PRODUCTS ── */}
-      <section className="px-6 lg:px-16 py-12 max-w-[1400px] mx-auto">
-        <div className="flex justify-between items-end mb-8" data-animate>
-          <div>
-            <div className="section-label">Marketplace</div>
-            <h2 className="font-display text-3xl md:text-4xl font-light">Trending now</h2>
-          </div>
-          <Link href="/marketplace" className="btn-secondary !py-2 !px-4 text-sm hidden md:flex">
-            View all <ArrowRight size={14} />
-          </Link>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4" data-animate>
-          {TRENDING_PRODUCTS.map((p) => (
-            <Link key={p.id} href={`/product/${p.id}`}
-              className="group bg-[#111] border border-white/07 hover:border-white/15 rounded-2xl overflow-hidden transition-all hover:-translate-y-1.5"
-              style={{ boxShadow: 'none' }}
-              onMouseEnter={(e) => (e.currentTarget.style.boxShadow = `0 20px 50px rgba(0,0,0,0.5)`)  }
-              onMouseLeave={(e) => (e.currentTarget.style.boxShadow = 'none')}>
-              {/* Product visual */}
-              <div className={`relative w-full aspect-[3/4] bg-gradient-to-br ${p.bg} flex items-center justify-center overflow-hidden`}>
-                <span className="font-display text-5xl font-light opacity-10" style={{ color: p.accent }}>
-                  {p.name.split(' ')[0].charAt(0)}
-                </span>
-                <span className="absolute top-2.5 left-2.5 bg-[#0B0B0B]/80 border border-white/10 rounded-full px-2.5 py-0.5 text-[11px] backdrop-blur-sm" style={{ color: p.accent }}>
-                  {p.tag}
-                </span>
-                <div className="absolute top-2.5 right-2.5 flex gap-1.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button className="w-7 h-7 bg-[#0B0B0B]/80 border border-white/10 rounded-full flex items-center justify-center text-xs backdrop-blur-sm hover:bg-white/10">
-                    ♡
-                  </button>
+            {/* Stats */}
+            <div style={{ display: 'flex', gap: 40, marginTop: 64 }}>
+              {[['12K+','Shoppers'],['98K+','Products'],['3K+','Sellers']].map(([num, label]) => (
+                <div key={label}>
+                  <div style={{ fontFamily: 'serif', fontSize: '1.8rem', fontWeight: 600, color: '#fff', lineHeight: 1 }}>{num}</div>
+                  <div style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.35)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 4 }}>{label}</div>
                 </div>
-              </div>
-              {/* Info */}
-              <div className="p-3">
-                <p className="text-[11px] text-muted uppercase tracking-wider mb-0.5">{p.seller}</p>
-                <p className="text-sm font-medium text-white leading-snug mb-2">{p.name}</p>
-                <div className="flex justify-between items-center">
-                  <span className="font-semibold text-white">₦{p.price.toLocaleString()}</span>
-                  <span className="text-[11px] text-gold">★ {p.rating}</span>
-                </div>
-              </div>
-            </Link>
-          ))}
-        </div>
-        <div className="text-center mt-8 md:hidden">
-          <Link href="/marketplace" className="btn-secondary text-sm">View all products</Link>
-        </div>
-      </section>
-
-      {/* ── HOW IT WORKS ── */}
-      <section className="bg-[#111] border-y border-white/07 px-6 lg:px-16 py-24">
-        <div className="max-w-[1400px] mx-auto">
-          <div className="text-center mb-16" data-animate>
-            <div className="section-label justify-center">How It Works</div>
-            <h2 className="font-display text-3xl md:text-5xl font-light">Fashion intelligence<br />in three steps</h2>
-          </div>
-          <div className="grid md:grid-cols-3 gap-6">
-            {[
-              { num: '01', icon: '◈', title: 'Tell the AI your style', desc: 'Describe your vibe, occasion, or budget in plain language. The AI understands context like a real stylist.' },
-              { num: '02', icon: '✦', title: 'AI curates your look', desc: 'Our model scans thousands of verified products and builds a complete, cohesive outfit in seconds.' },
-              { num: '03', icon: '⬡', title: 'Shop with confidence', desc: 'Add to cart, pay securely via Paystack or Flutterwave, and receive your look at the door.' },
-            ].map((step) => (
-              <div key={step.num} className="glass rounded-2xl p-6 hover:border-white/15 transition-all group" data-animate>
-                <div className="font-display text-5xl font-light text-white/05 mb-4 group-hover:text-white/08 transition-colors">
-                  {step.num}
-                </div>
-                <div className="w-10 h-10 rounded-xl bg-gold/10 border border-gold/15 flex items-center justify-center text-lg mb-4">
-                  {step.icon}
-                </div>
-                <h3 className="text-base font-medium mb-2">{step.title}</h3>
-                <p className="text-sm text-muted leading-relaxed">{step.desc}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ── SELLER CTA ── */}
-      <section className="px-6 lg:px-16 py-24 max-w-[1400px] mx-auto text-center" data-animate>
-        <div className="section-label justify-center">For Sellers</div>
-        <h2 className="font-display text-4xl md:text-5xl font-light mb-4">
-          Sell smarter with<br />
-          <span className="italic" style={{ color: '#C8A96B' }}>AI-powered tools</span>
-        </h2>
-        <p className="text-muted max-w-md mx-auto mb-10 leading-relaxed">
-          Launch your brand on Veyra and reach thousands of style-conscious shoppers. AI writes your product descriptions. Analytics track your growth.
-        </p>
-        <div className="flex flex-wrap justify-center gap-3 mb-12">
-          <Link href="/auth/signup?seller=true" className="btn-primary">
-            Start Selling Today <ArrowRight size={16} />
-          </Link>
-          <Link href="/dashboard/seller" className="btn-secondary">
-            See Seller Dashboard
-          </Link>
-        </div>
-        <div className="grid sm:grid-cols-3 gap-4 max-w-2xl mx-auto">
-          {[
-            { icon: '✦', title: 'AI Descriptions', desc: 'One-click premium product copy' },
-            { icon: '◈', title: 'Live Analytics', desc: 'Stripe-style revenue dashboard' },
-            { icon: '⬡', title: 'Instant Payouts', desc: 'Paystack & Flutterwave' },
-          ].map((f) => (
-            <div key={f.title} className="glass rounded-xl p-4 text-left">
-              <div className="text-xl mb-2">{f.icon}</div>
-              <div className="text-sm font-medium mb-0.5">{f.title}</div>
-              <div className="text-xs text-muted">{f.desc}</div>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      {/* ── FINAL CTA ── */}
-      <section className="px-6 lg:px-16 py-24 text-center relative overflow-hidden">
-        <div className="absolute inset-0 pointer-events-none"
-          style={{ background: 'radial-gradient(ellipse 60% 50% at 50% 50%, rgba(200,169,107,0.07) 0%, transparent 70%)' }} />
-        <div className="relative max-w-xl mx-auto">
-          <div className="section-label justify-center">The Future of Fashion</div>
-          <h2 className="font-display text-4xl md:text-6xl font-light mb-4">
-            Ready to wear<br />
-            <span className="italic" style={{ color: '#C8A96B' }}>intelligence?</span>
-          </h2>
-          <p className="text-muted mb-8 leading-relaxed">
-            Join thousands of style-forward Nigerians discovering fashion the smart way.
-          </p>
-          <div className="flex flex-wrap justify-center gap-3 mb-6">
-            <Link href="/auth/signup" className="btn-primary text-base">
-              Create Free Account <ArrowRight size={16} />
-            </Link>
-            <Link href="/marketplace" className="btn-secondary text-base">
-              Explore Marketplace
-            </Link>
-          </div>
-          <p className="text-xs text-muted/50">No credit card required · Free to join · AI tools included</p>
-        </div>
-      </section>
-
-      {/* ── FOOTER ── */}
-      <footer className="bg-[#111] border-t border-white/07 px-6 lg:px-16 py-12">
-        <div className="max-w-[1400px] mx-auto grid md:grid-cols-4 gap-10 mb-10">
-          <div>
-            <div className="font-display text-2xl font-light tracking-[0.25em] mb-3">
-              VE<span className="text-gold">Y</span>RA
-            </div>
-            <p className="text-sm text-muted leading-relaxed max-w-[220px]">
-              Fashion Meets Intelligence. Nigeria's most advanced AI-powered fashion marketplace.
-            </p>
-            <div className="flex gap-2 mt-4">
-              {['Twitter', 'Instagram', 'TikTok'].map((s) => (
-                <a key={s} href="#" className="text-xs glass rounded-full px-3 py-1.5 text-muted hover:text-white transition-colors">{s}</a>
               ))}
             </div>
           </div>
-          {[
-            { title: 'Platform', links: ['Marketplace', 'AI Stylist', 'Trending', 'New Arrivals'] },
-            { title: 'Sellers', links: ['Start Selling', 'Seller Dashboard', 'Pricing', 'Seller Stories'] },
-            { title: 'Company', links: ['About Veyra', 'Careers', 'Privacy Policy', 'Terms'] },
-          ].map((col) => (
-            <div key={col.title}>
-              <p className="text-[11px] uppercase tracking-widest text-muted mb-4">{col.title}</p>
-              <ul className="space-y-2.5">
-                {col.links.map((l) => (
-                  <li key={l}><a href="#" className="text-sm text-white/40 hover:text-white transition-colors">{l}</a></li>
-                ))}
-              </ul>
+
+          {/* Slide indicators */}
+          <div style={{ position: 'absolute', bottom: 40, left: '6rem', display: 'flex', gap: 8, zIndex: 2 }}>
+            {HERO_SLIDES.map((_, i) => (
+              <button key={i} onClick={() => setHeroSlide(i)}
+                style={{
+                  width: i === heroSlide ? 32 : 8, height: 8,
+                  borderRadius: 4, border: 'none', cursor: 'pointer',
+                  background: i === heroSlide ? slide.accent : 'rgba(255,255,255,0.2)',
+                  transition: 'all 0.3s ease', padding: 0,
+                }} />
+            ))}
+          </div>
+
+          {/* Scroll indicator */}
+          <div style={{
+            position: 'absolute', bottom: 40, right: '6rem', zIndex: 2,
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8,
+            animation: 'float 2s ease-in-out infinite',
+          }}>
+            <div style={{ width: 1, height: 48, background: 'linear-gradient(to bottom, transparent, rgba(255,255,255,0.3))' }} />
+            <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', letterSpacing: '0.2em', textTransform: 'uppercase', writingMode: 'vertical-rl' }}>Scroll</span>
+          </div>
+        </section>
+
+        {/* ── CATEGORIES — Netflix horizontal scroll ── */}
+        <section style={{ padding: '5rem 0', background: '#050505' }}>
+          <div style={{ padding: '0 4rem', marginBottom: '2rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#C8A96B', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 8 }}>
+                <span style={{ width: 20, height: 1, background: '#C8A96B', display: 'inline-block' }} /> Browse by Style
+              </div>
+              <h2 style={{ fontFamily: 'serif', fontSize: 'clamp(1.8rem, 3vw, 2.8rem)', fontWeight: 300, color: '#fff' }}>Shop Categories</h2>
             </div>
-          ))}
+          </div>
+
+          <div style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '0 4rem 1rem', scrollbarWidth: 'none' }}>
+            {CATEGORIES.map(cat => (
+              <Link key={cat.slug} href={`/marketplace?category=${cat.slug}`}
+                style={{
+                  flexShrink: 0, width: 200, height: 280, borderRadius: 16,
+                  overflow: 'hidden', position: 'relative', cursor: 'pointer',
+                  textDecoration: 'none', display: 'block',
+                  transition: 'transform 0.3s ease',
+                }}
+                onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1.03)'; }}
+                onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'scale(1)'; }}
+              >
+                <img src={cat.img} alt={cat.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <div style={{
+                  position: 'absolute', inset: 0,
+                  background: `linear-gradient(to top, ${cat.color}90 0%, transparent 60%)`,
+                }} />
+                <div style={{
+                  position: 'absolute', bottom: 16, left: 16,
+                  color: '#fff', fontWeight: 600, fontSize: '0.95rem',
+                }}>
+                  {cat.name}
+                </div>
+              </Link>
+            ))}
+          </div>
+        </section>
+
+        {/* ── FEATURED DROPS — Netflix row ── */}
+        {featured.length > 0 && (
+          <ProductRow
+            title="Featured Drops"
+            label="Editor's Pick"
+            products={featured}
+            rowKey="featured"
+            scrollRefs={scrollRefs}
+            onScroll={scroll}
+          />
+        )}
+
+        {/* ── AI STYLIST BANNER ── */}
+        <section style={{
+          margin: '2rem 4rem', padding: '4rem',
+          borderRadius: 24, position: 'relative', overflow: 'hidden',
+          background: 'linear-gradient(135deg, rgba(139,92,246,0.12) 0%, rgba(59,130,246,0.08) 100%)',
+          border: '1px solid rgba(139,92,246,0.2)',
+        }}>
+          <div style={{ position: 'absolute', top: -60, right: -60, width: 300, height: 300, borderRadius: '50%', background: 'radial-gradient(circle, rgba(139,92,246,0.1), transparent)', filter: 'blur(40px)', pointerEvents: 'none' }} />
+          <div style={{ position: 'relative', zIndex: 1, maxWidth: 600 }}>
+            <div style={{ fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#a78bfa', marginBottom: 12 }}>✦ AI-Powered</div>
+            <h2 style={{ fontFamily: 'serif', fontSize: 'clamp(2rem, 3.5vw, 3rem)', fontWeight: 300, color: '#fff', marginBottom: 16, lineHeight: 1.2 }}>
+              Your personal<br /><em style={{ color: '#a78bfa' }}>AI stylist</em>
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.5)', marginBottom: 28, lineHeight: 1.7 }}>
+              Describe what you want in plain English. Our AI builds complete outfits from thousands of verified products in seconds.
+            </p>
+            <Link href="/ai-stylist" style={{
+              background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)',
+              color: '#fff', border: 'none', padding: '12px 28px',
+              borderRadius: 50, fontSize: '0.9rem', fontWeight: 500,
+              cursor: 'pointer', textDecoration: 'none',
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              transition: 'opacity 0.2s',
+            }}>
+              <Sparkles size={15} /> Try AI Stylist
+            </Link>
+          </div>
+        </section>
+
+        {/* ── TRENDING NOW ── */}
+        {trending.length > 0 && (
+          <ProductRow
+            title="Trending Now"
+            label="Most Popular"
+            products={trending}
+            rowKey="trending"
+            scrollRefs={scrollRefs}
+            onScroll={scroll}
+          />
+        )}
+
+        {/* ── ALL PRODUCTS ── */}
+        {products.length > 0 && (
+          <ProductRow
+            title="New Arrivals"
+            label="Just Dropped"
+            products={products.slice(0, 12)}
+            rowKey="new"
+            scrollRefs={scrollRefs}
+            onScroll={scroll}
+          />
+        )}
+
+        {/* ── SELLER CTA ── */}
+        <section style={{ padding: '6rem 4rem', textAlign: 'center' }}>
+          <div style={{ maxWidth: 700, margin: '0 auto' }}>
+            <div style={{ fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#C8A96B', marginBottom: 16 }}>For Sellers</div>
+            <h2 style={{ fontFamily: 'serif', fontSize: 'clamp(2.5rem, 4vw, 4rem)', fontWeight: 300, color: '#fff', marginBottom: 16, lineHeight: 1.1 }}>
+              Sell smarter with<br /><em style={{ color: '#C8A96B' }}>AI-powered tools</em>
+            </h2>
+            <p style={{ color: 'rgba(255,255,255,0.4)', marginBottom: 36, lineHeight: 1.7 }}>
+              Launch your brand on VEYRA. AI writes your product descriptions. Analytics track your growth. Paystack handles your payments.
+            </p>
+            <div style={{ display: 'flex', gap: 16, justifyContent: 'center', flexWrap: 'wrap' }}>
+              <Link href="/auth/signup?seller=true" style={{
+                background: 'linear-gradient(135deg, #C8A96B, #A8872A)',
+                color: '#0B0B0B', border: 'none', padding: '14px 32px',
+                borderRadius: 50, fontSize: '0.9rem', fontWeight: 600,
+                cursor: 'pointer', textDecoration: 'none',
+                display: 'inline-flex', alignItems: 'center', gap: 8,
+              }}>
+                Start Selling Today <ArrowRight size={16} />
+              </Link>
+              <Link href="/dashboard/seller" style={{
+                background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
+                color: '#fff', padding: '14px 32px', borderRadius: 50,
+                fontSize: '0.9rem', cursor: 'pointer', textDecoration: 'none',
+              }}>
+                View Dashboard
+              </Link>
+            </div>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 16, marginTop: 48 }}>
+              {[
+                { icon: '✦', title: 'AI Descriptions', desc: 'One-click premium product copy' },
+                { icon: '◈', title: 'Live Analytics', desc: 'Stripe-style revenue dashboard' },
+                { icon: '⬡', title: 'Instant Payouts', desc: 'Via Paystack & Flutterwave' },
+              ].map(f => (
+                <div key={f.title} style={{
+                  background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)',
+                  borderRadius: 16, padding: '1.25rem', textAlign: 'left',
+                }}>
+                  <div style={{ fontSize: '1.5rem', marginBottom: 8 }}>{f.icon}</div>
+                  <div style={{ fontSize: '0.9rem', fontWeight: 500, color: '#fff', marginBottom: 4 }}>{f.title}</div>
+                  <div style={{ fontSize: '0.8rem', color: 'rgba(255,255,255,0.35)' }}>{f.desc}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+
+        {/* ── FOOTER ── */}
+        <footer style={{
+          background: '#0a0a0a', borderTop: '1px solid rgba(255,255,255,0.06)',
+          padding: '4rem',
+        }}>
+          <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr 1fr 1fr 1fr', gap: '3rem', marginBottom: '3rem' }}>
+            <div>
+              <div style={{ fontFamily: 'serif', fontSize: '1.8rem', fontWeight: 300, letterSpacing: '0.3em', color: '#fff', marginBottom: 12 }}>
+                VE<span style={{ color: '#C8A96B' }}>Y</span>RA
+              </div>
+              <p style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.3)', lineHeight: 1.7, maxWidth: 220 }}>
+                Fashion Meets Intelligence. Nigeria's most advanced AI-powered fashion marketplace.
+              </p>
+              <div style={{ display: 'flex', gap: 8, marginTop: 20 }}>
+                {['Twitter','Instagram','TikTok'].map(s => (
+                  <a key={s} href="#" style={{ fontSize: '0.75rem', background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 50, padding: '6px 14px', color: 'rgba(255,255,255,0.4)', textDecoration: 'none', transition: 'color 0.2s' }}>
+                    {s}
+                  </a>
+                ))}
+              </div>
+            </div>
+            {[
+              { title: 'Shop', links: [['Marketplace','/marketplace'],['AI Stylist','/ai-stylist'],['Trending','/marketplace?sort=popular'],['New Arrivals','/marketplace?sort=newest']] },
+              { title: 'Sell', links: [['Start Selling','/auth/signup?seller=true'],['Dashboard','/dashboard/seller'],['Seller Policy','/seller-policy'],['Seller Guide','/help']] },
+              { title: 'Support', links: [['Help Center','/help'],['Contact Us','/help'],['Refund Policy','/refund-policy'],['Report Issue','/help']] },
+              { title: 'Legal', links: [['Terms','/terms'],['Privacy','/privacy'],['Community','/community-guidelines'],['About VEYRA','/about']] },
+            ].map(col => (
+              <div key={col.title}>
+                <p style={{ fontSize: '0.7rem', textTransform: 'uppercase', letterSpacing: '0.12em', color: 'rgba(255,255,255,0.3)', marginBottom: 16 }}>{col.title}</p>
+                <ul style={{ listStyle: 'none', padding: 0, margin: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {col.links.map(([label, href]) => (
+                    <li key={label}>
+                      <Link href={href} style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.35)', textDecoration: 'none', transition: 'color 0.2s' }}
+                        onMouseEnter={e => { (e.target as HTMLElement).style.color = '#fff'; }}
+                        onMouseLeave={e => { (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.35)'; }}>
+                        {label}
+                      </Link>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            ))}
+          </div>
+          <div style={{ borderTop: '1px solid rgba(255,255,255,0.06)', paddingTop: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.78rem', color: 'rgba(255,255,255,0.2)' }}>© 2026 Veyra Technologies Ltd. All rights reserved. · Lagos, Nigeria</span>
+            <span style={{ fontFamily: 'serif', fontSize: '1rem', letterSpacing: '0.3em', color: 'rgba(255,255,255,0.08)' }}>VEYRA</span>
+          </div>
+        </footer>
+
+        <style>{`
+          @keyframes float { 0%,100%{transform:translateY(0)} 50%{transform:translateY(-8px)} }
+          @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
+          ::-webkit-scrollbar { width: 0; height: 0; }
+        `}</style>
+      </div>
+    </>
+  );
+}
+
+function ProductRow({ title, label, products, rowKey, scrollRefs, onScroll }: any) {
+  return (
+    <section style={{ padding: '3rem 0', background: '#050505' }}>
+      <div style={{ padding: '0 4rem', marginBottom: '1.5rem', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div>
+          <div style={{ fontSize: '0.72rem', letterSpacing: '0.15em', textTransform: 'uppercase', color: '#C8A96B', marginBottom: 6, display: 'flex', alignItems: 'center', gap: 8 }}>
+            <span style={{ width: 20, height: 1, background: '#C8A96B', display: 'inline-block' }} /> {label}
+          </div>
+          <h2 style={{ fontFamily: 'serif', fontSize: 'clamp(1.5rem, 2.5vw, 2.2rem)', fontWeight: 300, color: '#fff' }}>{title}</h2>
         </div>
-        <div className="border-t border-white/07 pt-6 flex flex-col md:flex-row justify-between items-center gap-3 text-xs text-white/25">
-          <span>© 2026 Veyra Technologies Ltd. All rights reserved.</span>
-          <span className="font-display text-base tracking-[0.25em] text-white/10">VEYRA</span>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <button onClick={() => onScroll(rowKey, 'left')} style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}>
+            <ChevronLeft size={16} />
+          </button>
+          <button onClick={() => onScroll(rowKey, 'right')} style={{ width: 36, height: 36, borderRadius: '50%', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', transition: 'background 0.2s' }}>
+            <ChevronRight size={16} />
+          </button>
         </div>
-      </footer>
-    </div>
+      </div>
+
+      <div
+        ref={el => { scrollRefs.current[rowKey] = el; }}
+        style={{ display: 'flex', gap: 16, overflowX: 'auto', padding: '0 4rem 1rem', scrollbarWidth: 'none', scrollSnapType: 'x mandatory' }}
+      >
+        {products.map((p: any) => {
+          const img = p.thumbnail || p.images?.[0];
+          const discount = p.compare_price && p.compare_price > p.price ? Math.round((1 - p.price / p.compare_price) * 100) : null;
+          return (
+            <Link key={p.id} href={`/product/${p.id}`}
+              style={{ flexShrink: 0, width: 220, textDecoration: 'none', scrollSnapAlign: 'start' }}
+            >
+              <div style={{
+                background: '#111', borderRadius: 16, overflow: 'hidden',
+                border: '1px solid rgba(255,255,255,0.06)',
+                transition: 'transform 0.3s ease, border-color 0.3s ease',
+              }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(-6px)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.15)'; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.transform = 'translateY(0)'; (e.currentTarget as HTMLElement).style.borderColor = 'rgba(255,255,255,0.06)'; }}
+              >
+                <div style={{ position: 'relative', width: '100%', aspectRatio: '3/4', background: '#1a1a1a', overflow: 'hidden' }}>
+                  {img ? (
+                    <img src={img} alt={p.name} style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s ease' }}
+                      onMouseEnter={e => { (e.target as HTMLImageElement).style.transform = 'scale(1.08)'; }}
+                      onMouseLeave={e => { (e.target as HTMLImageElement).style.transform = 'scale(1)'; }}
+                    />
+                  ) : (
+                    <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #1a1a2e, #16213e)' }}>
+                      <span style={{ fontFamily: 'serif', fontSize: '3rem', opacity: 0.1, color: '#8B5CF6' }}>{p.name?.charAt(0)}</span>
+                    </div>
+                  )}
+                  {discount && (
+                    <span style={{ position: 'absolute', top: 10, left: 10, background: '#ef4444', color: '#fff', fontSize: '0.65rem', fontWeight: 700, padding: '2px 8px', borderRadius: 50 }}>
+                      -{discount}%
+                    </span>
+                  )}
+                </div>
+                <div style={{ padding: '12px' }}>
+                  <p style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 4 }}>
+                    {p.stores?.store_name || 'VEYRA'}
+                  </p>
+                  <p style={{ fontSize: '0.85rem', fontWeight: 500, color: '#fff', marginBottom: 8, lineHeight: 1.3, overflow: 'hidden', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical' }}>
+                    {p.name}
+                  </p>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span style={{ fontWeight: 600, color: '#fff' }}>₦{Number(p.price).toLocaleString()}</span>
+                    <span style={{ fontSize: '0.7rem', color: '#C8A96B' }}>★ {p.rating || '—'}</span>
+                  </div>
+                </div>
+              </div>
+            </Link>
+          );
+        })}
+      </div>
+    </section>
   );
 }
