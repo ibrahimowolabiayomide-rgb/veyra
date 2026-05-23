@@ -14,7 +14,20 @@ const SHARE_OPTIONS = [
   { name: 'Copy Link', color: '#C8A96B', icon: '🔗', url: 'copy' },
 ];
 
-const MENU_SECTIONS = [
+interface MenuItem {
+  id: string;
+  icon: any;
+  label: string;
+  desc?: string;
+  href?: string;
+}
+
+interface MenuSection {
+  title: string;
+  items: MenuItem[];
+}
+
+const MENU_SECTIONS: MenuSection[] = [
   {
     title: 'Account',
     items: [
@@ -130,12 +143,6 @@ export default function SettingsPage() {
   };
 
   const inp = "w-full bg-[#0B0B0B] border border-white/10 focus:border-gold/40 rounded-xl px-4 py-2.5 text-sm text-white placeholder:text-muted outline-none transition-colors";
-  const tog = (on: boolean) => (
-    <button onClick={() => {}}
-      style={{ width: 44, height: 24, borderRadius: 50, border: 'none', cursor: 'pointer', position: 'relative', transition: 'background 0.2s', background: on ? '#C8A96B' : 'rgba(255,255,255,0.15)', padding: 0 }}>
-      <span style={{ position: 'absolute', top: 2, width: 20, height: 20, borderRadius: '50%', background: '#fff', transition: 'left 0.2s', left: on ? 22 : 2 }} />
-    </button>
-  );
 
   return (
     <div className="min-h-screen pt-[70px]" style={{ background: '#050505' }}>
@@ -146,14 +153,13 @@ export default function SettingsPage() {
         </div>
 
         <div className="flex flex-col lg:flex-row gap-6">
-          {/* Sidebar */}
           <aside className="lg:w-64 flex-shrink-0">
             <div className="space-y-6">
               {MENU_SECTIONS.map(section => (
                 <div key={section.title}>
                   <p className="text-[10px] uppercase tracking-widest text-muted px-3 mb-2">{section.title}</p>
                   <div className="glass rounded-2xl overflow-hidden">
-                    {section.items.map(item => (
+                    {section.items.map((item: MenuItem) => (
                       item.href ? (
                         <Link key={item.id} href={item.href}
                           className="flex items-center gap-3 px-4 py-3 text-sm text-muted hover:text-white hover:bg-white/04 transition-all border-b border-white/05 last:border-0">
@@ -176,8 +182,6 @@ export default function SettingsPage() {
                   </div>
                 </div>
               ))}
-
-              {/* Sign out */}
               <div className="glass rounded-2xl overflow-hidden">
                 <button onClick={signOut} className="w-full flex items-center gap-3 px-4 py-3 text-sm text-muted hover:text-red-400 hover:bg-red-400/05 transition-all">
                   <LogOut size={15} /> Sign Out
@@ -189,10 +193,7 @@ export default function SettingsPage() {
             </div>
           </aside>
 
-          {/* Content */}
           <div className="flex-1 glass rounded-2xl p-6 lg:p-8">
-
-            {/* PROFILE */}
             {activeTab === 'profile' && (
               <div className="space-y-5">
                 <h2 className="text-lg font-medium">Edit Profile</h2>
@@ -220,7 +221,6 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* SECURITY */}
             {activeTab === 'security' && (
               <div className="space-y-5">
                 <h2 className="text-lg font-medium">Security</h2>
@@ -230,18 +230,9 @@ export default function SettingsPage() {
                   <div><label className="text-xs text-muted uppercase tracking-wider mb-1.5 block">Confirm Password</label><input type="password" value={passwords.confirm} onChange={e => setPasswords({...passwords, confirm: e.target.value})} className={inp} placeholder="Repeat password" /></div>
                   <button onClick={changePassword} disabled={loading} className="btn-primary text-sm">{loading ? 'Updating...' : 'Update Password'}</button>
                 </div>
-                <div className="glass rounded-xl p-5">
-                  <h3 className="text-sm font-medium mb-1">Two-Factor Authentication</h3>
-                  <p className="text-xs text-muted mb-3">Add extra security to your account with 2FA</p>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm text-muted">Enable 2FA</span>
-                    {tog(false)}
-                  </div>
-                </div>
               </div>
             )}
 
-            {/* NOTIFICATIONS */}
             {activeTab === 'notifications' && (
               <div className="space-y-5">
                 <h2 className="text-lg font-medium">Notifications</h2>
@@ -263,7 +254,6 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* PRIVACY */}
             {activeTab === 'privacy' && (
               <div className="space-y-5">
                 <h2 className="text-lg font-medium">Privacy</h2>
@@ -282,7 +272,6 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* PREFERENCES */}
             {activeTab === 'preferences' && (
               <div className="space-y-5">
                 <h2 className="text-lg font-medium">Language & Currency</h2>
@@ -292,15 +281,10 @@ export default function SettingsPage() {
                 <div><label className="text-xs text-muted uppercase tracking-wider mb-1.5 block">Language</label>
                   <select className={inp + ' cursor-pointer'}><option>English</option><option>Yoruba</option><option>Igbo</option><option>Hausa</option></select>
                 </div>
-                <div className="flex items-center justify-between py-3 border border-white/07 rounded-xl px-4">
-                  <div><p className="text-sm font-medium">Dark Mode</p><p className="text-xs text-muted">VEYRA looks best in dark</p></div>
-                  {tog(true)}
-                </div>
                 <button onClick={() => toast.success('Preferences saved!')} className="btn-primary text-sm flex items-center gap-2"><Save size={14} /> Save</button>
               </div>
             )}
 
-            {/* SHARE */}
             {activeTab === 'share' && (
               <div className="space-y-5">
                 <h2 className="text-lg font-medium">Share VEYRA</h2>
@@ -324,7 +308,6 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* ORDERS */}
             {activeTab === 'orders' && (
               <div>
                 <h2 className="text-lg font-medium mb-5">Purchase History</h2>
@@ -334,7 +317,6 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* SAVED */}
             {activeTab === 'saved' && (
               <div>
                 <h2 className="text-lg font-medium mb-5">Saved Posts</h2>
@@ -344,20 +326,14 @@ export default function SettingsPage() {
               </div>
             )}
 
-            {/* PAYMENT */}
             {activeTab === 'payment' && (
               <div className="space-y-4">
                 <h2 className="text-lg font-medium">Payment Methods</h2>
                 <p className="text-sm text-muted">Your payment information is handled securely by Paystack. We never store your card details.</p>
-                <div className="glass rounded-xl p-4 flex items-center gap-3">
-                  <div className="w-10 h-7 rounded bg-blue-600 flex items-center justify-center text-[10px] font-bold text-white">VISA</div>
-                  <div><p className="text-sm font-medium">Add Payment Method</p><p className="text-xs text-muted">Cards are processed via Paystack</p></div>
-                </div>
                 <button onClick={() => toast.success('Payment methods are managed at checkout via Paystack')} className="btn-primary text-sm">Manage Payments</button>
               </div>
             )}
 
-            {/* DEVICES */}
             {activeTab === 'devices' && (
               <div className="space-y-4">
                 <h2 className="text-lg font-medium">Devices & Sessions</h2>
