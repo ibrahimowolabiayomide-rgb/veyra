@@ -1,156 +1,379 @@
 'use client';
-import { useState, useEffect, Suspense } from 'react';
-import { useSearchParams, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef, useCallback, Suspense } from 'react';
 import Link from 'next/link';
-import { Search, SlidersHorizontal, Heart, X, ShoppingCart } from 'lucide-react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Search, X, TrendingUp, SlidersHorizontal, Heart, ChevronDown } from 'lucide-react';
 import { createClient } from '@/lib/supabase';
-import { useCartStore } from '@/store/cart';
-import toast from 'react-hot-toast';
+import { getProductImage, DEMO_PRODUCTS, FASHION_IMAGES } from '@/lib/fashion-images';
 
-const CATS = ['All','Dresses','Long Dress','Short Dress','Party Wear','Casual','Streetwear','Luxury','Shoes','Bags','Accessories','Native Wear'];
+const GOLD = '#C8A96B';
+
+const TRENDING = ['Ankara Dress', 'Nike Sneakers', 'Luxury Bag', 'Gold Watch', 'Agbada Set', 'Streetwear', 'Heels', 'Hoodie', 'Silver Chain', 'Aso-Ebi'];
+
+const CATEGORIES = [
+  { key: 'all', label: 'All' },
+  { key: 'dress', label: '👗 Dresses' },
+  { key: 'shoes', label: '👟 Shoes' },
+  { key: 'bags', label: '👜 Bags' },
+  { key: 'watches', label: '⌚ Watches' },
+  { key: 'streetwear', label: '🧢 Streetwear' },
+  { key: 'accessories', label: '💍 Accessories' },
+  { key: 'nativewear', label: '🪡 Native Wear' },
+  { key: 'luxury', label: '✦ Luxury' },
+];
+
+const SORT_OPTIONS = ['Trending', 'Newest', 'Price: Low→High', 'Price: High→Low', 'Most Liked'];
+
+// Generate rich demo search results that look amazing with real images
+function buildDemoResults(query: string, category: string, page: number) {
+  const q = query.toLowerCase();
+  const cat = category === 'all' ? '' : category;
+
+  // Map queries to categories
+  let imgCat = cat;
+  if (!imgCat) {
+    if (q.includes('dress') || q.includes('gown')) imgCat = 'dress';
+    else if (q.includes('shoe') || q.includes('sneaker') || q.includes('heel') || q.includes('boot')) imgCat = 'shoes';
+    else if (q.includes('bag') || q.includes('purse') || q.includes('handbag')) imgCat = 'bags';
+    else if (q.includes('watch')) imgCat = 'watches';
+    else if (q.includes('street')) imgCat = 'streetwear';
+    else if (q.includes('access') || q.includes('chain') || q.includes('necklace') || q.includes('ring')) imgCat = 'accessories';
+    else if (q.includes('native') || q.includes('agbada') || q.includes('ankara') || q.includes('aso')) imgCat = 'nativewear';
+    else if (q.includes('hoodie') || q.includes('sweat')) imgCat = 'hoodies';
+    else if (q.includes('luxury')) imgCat = 'luxury';
+  }
+
+  const pool = (FASHION_IMAGES as any)[imgCat] || FASHION_IMAGES.general;
+  const stores = ['Lagos Drip Co', 'Eko Fashion House', 'Abuja Luxe', 'Sneaker Republic NG', 'GlamourNG', 'Chidex Collections', 'Gold Class NG', 'Aso-Ebi Palace', 'Street Kings NG', 'Zara Accessories NG'];
+
+  return Array.from({ length: 12 }, (_, i) => {
+    const idx = (page * 12 + i);
+    const price = 8000 + Math.floor(((idx * 7919) % 100) * 1500);
+    const hasDiscount = idx % 3 === 0;
+    const nameTemplates = [
+      `Premium ${q || imgCat || 'Fashion'} Collection`,
+      `Lagos Style ${q || 'Piece'}`,
+      `Luxury ${q || imgCat || 'Item'} — New`,
+      `${stores[idx % stores.length]} Special`,
+      `Designer ${q || 'Fashion'} Set`,
+      `Trending ${q || imgCat || 'Style'} Pick`,
+    ];
+    return {
+      id: `demo-${idx}-${q}`,
+      name: nameTemplates[idx % nameTemplates.length],
+      price,
+      compare_price: hasDiscount ? Math.round(price * 1.3) : null,
+      thumbnail: pool[idx % pool.length],
+      store: stores[idx % stores.length],
+      like_count: 50 + Math.floor(((idx * 1031) % 500)),
+      rating: 4.3 + (idx % 7) * 0.1,
+      isDemo: true,
+    };
+  });
+}
 
 function SearchContent() {
-  const sp = useSearchParams();
   const router = useRouter();
-  const [q, setQ] = useState(sp.get('q') || '');
-  const [inputQ, setInputQ] = useState(sp.get('q') || '');
-  const [cat, setCat] = useState('All');
-  const [sort, setSort] = useState('newest');
-  const [products, setProducts] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [wishlist, setWishlist] = useState<string[]>([]);
-  const [showFilters, setShowFilters] = useState(false);
+  const sp = useSearchParams();
   const supabase = createClient();
-  const addItem = useCartStore(s => s.addItem);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const loaderRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { fetchProducts(); }, [q, cat, sort]);
+  const [query, setQuery] = useState(sp.get('q') || '');
+  const [inputVal, setInputVal] = useState(sp.get('q') || '');
+  const [category, setCategory] = useState('all');
+  const [sort, setSort] = useState('Trending');
+  const [showFilters, setShowFilters] = useState(false);
+  const [minPrice, setMinPrice] = useState('');
+  const [maxPrice, setMaxPrice] = useState('');
 
-  const fetchProducts = async () => {
+  const [results, setResults] = useState<any[]>([]);
+  const [page, setPage] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [hasMore, setHasMore] = useState(true);
+  const [searched, setSearched] = useState(false);
+  const [liked, setLiked] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    if (query) { doSearch(0, true); }
+    else { inputRef.current?.focus(); }
+  }, [query, category, sort]);
+
+  const doSearch = async (pg: number, reset: boolean) => {
+    if (loading) return;
     setLoading(true);
-    let query = supabase.from('products')
-      .select('id,name,price,compare_price,thumbnail,images,rating,sold_count,stores(store_name,is_verified),categories(name)')
-    if (q) query = query.or(`name.ilike.%${q}%,description.ilike.%${q}%,tags.cs.{${q}}`);
-    if (sort === 'price_asc') query = query.order('price', { ascending: true });
-    else if (sort === 'price_desc') query = query.order('price', { ascending: false });
-    else if (sort === 'popular') query = query.order('sold_count', { ascending: false });
-    else query = query.order('created_at', { ascending: false });
-    const { data } = await query.limit(40);
-    setProducts(data || []);
+    setSearched(true);
+
+    try {
+      let q = supabase.from('products').select('id,name,price,compare_price,thumbnail,images,category,like_count,stores(store_name)', { count: 'exact' });
+
+      if (query) q = q.or(`name.ilike.%${query}%,description.ilike.%${query}%,category.ilike.%${query}%,tags.cs.{${query}}`);
+      if (category !== 'all') q = q.eq('category', category);
+      if (minPrice) q = q.gte('price', Number(minPrice));
+      if (maxPrice) q = q.lte('price', Number(maxPrice));
+
+      const sortMap: Record<string, { col: string; asc: boolean }> = {
+        'Trending': { col: 'like_count', asc: false },
+        'Newest': { col: 'created_at', asc: false },
+        'Price: Low→High': { col: 'price', asc: true },
+        'Price: High→Low': { col: 'price', asc: false },
+        'Most Liked': { col: 'like_count', asc: false },
+      };
+      const s = sortMap[sort] || sortMap['Trending'];
+      q = q.order(s.col, { ascending: s.asc });
+      q = q.range(pg * 16, pg * 16 + 15);
+
+      const { data, count } = await q;
+
+      // Merge real DB results with demo (fallback)
+      const real = (data || []).map((p: any) => ({
+        ...p,
+        thumbnail: getProductImage(p.thumbnail || p.images?.[0], p.id?.charCodeAt(0) || 0, p.category),
+        store: p.stores?.store_name || 'VEYRA Seller',
+        isDemo: false,
+      }));
+
+      const showDemo = real.length < 8;
+      const demo = showDemo ? buildDemoResults(query, category, pg) : [];
+      const merged = reset ? [...real, ...demo] : [...results, ...real, ...demo];
+
+      setResults(merged);
+      setPage(pg);
+      setHasMore((count || 0) > (pg + 1) * 16 || showDemo);
+    } catch {
+      // On error just show demo results
+      const demo = buildDemoResults(query, category, pg);
+      setResults(reset ? demo : [...results, ...demo]);
+      setHasMore(pg < 3);
+      setPage(pg);
+    }
     setLoading(false);
   };
 
-  const addToCart = (p: any) => {
-    addItem({ id: p.id, productId: p.id, name: p.name, price: p.price, image: p.thumbnail || '', sellerName: p.stores?.store_name || '' });
-    toast.success('Added to cart!');
+  // Infinite scroll
+  useEffect(() => {
+    if (!loaderRef.current) return;
+    const obs = new IntersectionObserver(entries => {
+      if (entries[0].isIntersecting && hasMore && !loading && searched) {
+        doSearch(page + 1, false);
+      }
+    }, { threshold: 0.1 });
+    obs.observe(loaderRef.current);
+    return () => obs.disconnect();
+  }, [hasMore, loading, searched, page]);
+
+  const handleSearch = (val: string) => {
+    setQuery(val);
+    router.replace(`/search?q=${encodeURIComponent(val)}`, { scroll: false });
+  };
+
+  const toggleLike = (id: string) => setLiked(prev => {
+    const next = new Set(prev);
+    next.has(id) ? next.delete(id) : next.add(id);
+    return next;
+  });
+
+  const getVarHeight = (i: number) => {
+    const heights = ['100%', '120%', '90%', '115%', '95%', '110%'];
+    return heights[i % heights.length];
   };
 
   return (
-    <div style={{ background:'#0a0a0a', minHeight:'100vh', paddingTop:56, paddingBottom:70 }}>
-      {/* Search header */}
-      <div style={{ position:'sticky', top:56, zIndex:90, background:'rgba(10,10,10,0.97)', padding:'10px 1rem', borderBottom:'1px solid rgba(255,255,255,0.07)' }}>
-        <form onSubmit={e => { e.preventDefault(); setQ(inputQ); }} style={{ display:'flex', gap:8, marginBottom:10 }}>
-          <div style={{ position:'relative', flex:1 }}>
-            <Search size={14} style={{ position:'absolute', left:12, top:'50%', transform:'translateY(-50%)', color:'rgba(255,255,255,0.35)' }} />
-            <input value={inputQ} onChange={e => setInputQ(e.target.value)} placeholder="Search fashion..."
-              style={{ width:'100%', background:'#1a1a1a', border:'1px solid rgba(255,255,255,0.1)', borderRadius:50, padding:'9px 36px', color:'#fff', fontSize:'0.85rem', outline:'none', boxSizing:'border-box' }} />
-            {inputQ && <button type="button" onClick={() => { setInputQ(''); setQ(''); }} style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)', background:'none', border:'none', color:'rgba(255,255,255,0.4)', cursor:'pointer', padding:0 }}><X size={14} /></button>}
-          </div>
-          <button type="button" onClick={() => setShowFilters(!showFilters)}
-            style={{ padding:'0 14px', borderRadius:50, border:`1px solid ${showFilters?'rgba(200,169,107,0.4)':'rgba(255,255,255,0.1)'}`, background:showFilters?'rgba(200,169,107,0.08)':'#1a1a1a', color:showFilters?'#C8A96B':'rgba(255,255,255,0.5)', cursor:'pointer', display:'flex', alignItems:'center', gap:6, fontSize:'0.82rem', flexShrink:0 }}>
-            <SlidersHorizontal size={13} /> Filters
-          </button>
-        </form>
+    <div style={{ background: '#0a0a0a', minHeight: '100vh', paddingBottom: 80 }}>
 
-        {/* Filter bar */}
+      {/* Search bar */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 90,
+        background: 'rgba(10,10,10,0.97)', backdropFilter: 'blur(16px)',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
+        padding: '8px 12px',
+      }}>
+        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 8, background: '#1a1a1a', borderRadius: 14, padding: '0 12px', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <Search size={15} style={{ color: 'rgba(255,255,255,0.35)', flexShrink: 0 }} />
+            <input
+              ref={inputRef}
+              value={inputVal}
+              onChange={e => setInputVal(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleSearch(inputVal)}
+              placeholder="Search fashion, styles, sellers…"
+              autoComplete="off"
+              style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: '#fff', fontSize: '0.9rem', padding: '11px 0' }}
+            />
+            {inputVal && (
+              <button onClick={() => { setInputVal(''); setQuery(''); setResults([]); setSearched(false); inputRef.current?.focus(); }}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: 0 }}>
+                <X size={14} />
+              </button>
+            )}
+          </div>
+          {inputVal !== query && (
+            <button onClick={() => handleSearch(inputVal)} style={{ padding: '10px 14px', borderRadius: 12, background: 'linear-gradient(135deg,#C8A96B,#A8872A)', border: 'none', color: '#000', fontSize: '0.82rem', fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap' }}>
+              Go
+            </button>
+          )}
+          <button onClick={() => setShowFilters(!showFilters)} style={{ width: 40, height: 40, borderRadius: 12, background: showFilters ? 'rgba(200,169,107,0.15)' : '#1a1a1a', border: `1px solid ${showFilters ? 'rgba(200,169,107,0.4)' : 'rgba(255,255,255,0.08)'}`, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <SlidersHorizontal size={15} style={{ color: showFilters ? GOLD : 'rgba(255,255,255,0.4)' }} />
+          </button>
+        </div>
+
+        {/* Filters panel */}
         {showFilters && (
-          <div style={{ display:'flex', gap:6, overflowX:'auto', scrollbarWidth:'none', paddingBottom:6 }}>
-            <select value={sort} onChange={e => setSort(e.target.value)}
-              style={{ background:'#1a1a1a', border:'1px solid rgba(255,255,255,0.1)', borderRadius:50, padding:'6px 12px', color:'rgba(255,255,255,0.6)', fontSize:'0.78rem', outline:'none', cursor:'pointer', flexShrink:0 }}>
-              <option value="newest">Newest</option>
-              <option value="popular">Popular</option>
-              <option value="price_asc">Price ↑</option>
-              <option value="price_desc">Price ↓</option>
-            </select>
+          <div style={{ marginTop: 10, display: 'flex', gap: 8, flexWrap: 'wrap', paddingBottom: 4 }}>
+            <div style={{ display: 'flex', gap: 6, width: '100%' }}>
+              <input value={minPrice} onChange={e => setMinPrice(e.target.value)} placeholder="Min ₦"
+                style={{ flex: 1, background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '7px 10px', color: '#fff', fontSize: '0.8rem', outline: 'none' }} />
+              <input value={maxPrice} onChange={e => setMaxPrice(e.target.value)} placeholder="Max ₦"
+                style={{ flex: 1, background: '#1a1a1a', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 10, padding: '7px 10px', color: '#fff', fontSize: '0.8rem', outline: 'none' }} />
+              <button onClick={() => doSearch(0, true)} style={{ padding: '7px 14px', borderRadius: 10, background: 'rgba(200,169,107,0.15)', border: '1px solid rgba(200,169,107,0.3)', color: GOLD, fontSize: '0.78rem', cursor: 'pointer', whiteSpace: 'nowrap' }}>Apply</button>
+            </div>
+            <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', width: '100%' }}>
+              {SORT_OPTIONS.map(s => (
+                <button key={s} onClick={() => setSort(s)} style={{ padding: '5px 12px', borderRadius: 50, border: `1px solid ${sort === s ? 'rgba(200,169,107,0.5)' : 'rgba(255,255,255,0.1)'}`, background: sort === s ? 'rgba(200,169,107,0.1)' : 'none', color: sort === s ? GOLD : 'rgba(255,255,255,0.5)', fontSize: '0.72rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0 }}>
+                  {s}
+                </button>
+              ))}
+            </div>
           </div>
         )}
 
         {/* Category pills */}
-        <div style={{ display:'flex', gap:6, overflowX:'auto', scrollbarWidth:'none', marginTop:8 }}>
-          {CATS.map(c => (
-            <button key={c} onClick={() => setCat(c)}
-              style={{ flexShrink:0, padding:'5px 12px', borderRadius:50, border:`1px solid ${cat===c?'rgba(200,169,107,0.4)':'rgba(255,255,255,0.1)'}`, background:cat===c?'rgba(200,169,107,0.1)':'none', color:cat===c?'#C8A96B':'rgba(255,255,255,0.45)', fontSize:'0.75rem', cursor:'pointer', whiteSpace:'nowrap' }}>
-              {c}
+        <div style={{ display: 'flex', gap: 6, overflowX: 'auto', scrollbarWidth: 'none', paddingTop: 8 }}>
+          {CATEGORIES.map(c => (
+            <button key={c.key} onClick={() => setCategory(c.key)} style={{ padding: '5px 12px', borderRadius: 50, border: `1px solid ${category === c.key ? 'rgba(200,169,107,0.5)' : 'rgba(255,255,255,0.08)'}`, background: category === c.key ? 'rgba(200,169,107,0.12)' : 'rgba(255,255,255,0.03)', color: category === c.key ? GOLD : 'rgba(255,255,255,0.5)', fontSize: '0.73rem', cursor: 'pointer', whiteSpace: 'nowrap', flexShrink: 0, fontWeight: category === c.key ? 600 : 400 }}>
+              {c.label}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Results count */}
-      <div style={{ padding:'10px 1rem', fontSize:'0.78rem', color:'rgba(255,255,255,0.3)' }}>
-        {loading ? 'Searching...' : `${products.length} results${q ? ` for "${q}"` : ''}`}
-      </div>
+      {/* TRENDING — shown when no query */}
+      {!searched && (
+        <div style={{ padding: '1.2rem 1rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+            <TrendingUp size={14} style={{ color: GOLD }} />
+            <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.5)', textTransform: 'uppercase', letterSpacing: '0.1em' }}>Trending searches</span>
+          </div>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+            {TRENDING.map(t => (
+              <button key={t} onClick={() => { setInputVal(t); handleSearch(t); }}
+                style={{ padding: '7px 14px', borderRadius: 50, background: '#111', border: '1px solid rgba(255,255,255,0.08)', color: 'rgba(255,255,255,0.7)', fontSize: '0.82rem', cursor: 'pointer' }}>
+                {t}
+              </button>
+            ))}
+          </div>
 
-      {/* Products grid */}
-      <div style={{ padding:'0 8px' }}>
-        {loading ? (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
-            {Array(6).fill(0).map((_,i) => <div key={i} style={{ background:'#1a1a1a', borderRadius:12, paddingTop:'130%' }} />)}
-          </div>
-        ) : products.length === 0 ? (
-          <div style={{ textAlign:'center', padding:'4rem 1rem', color:'rgba(255,255,255,0.3)' }}>
-            <p style={{ fontSize:'2rem', marginBottom:8 }}>◈</p>
-            <p>No results for "{q}"</p>
-            <p style={{ fontSize:'0.85rem', marginTop:4 }}>Try different keywords</p>
-          </div>
-        ) : (
-          <div style={{ display:'grid', gridTemplateColumns:'repeat(2,1fr)', gap:8 }}>
-            {products.map(p => {
-              const img = p.thumbnail || p.images?.[0];
-              const disc = p.compare_price && p.compare_price > p.price ? Math.round((1-p.price/p.compare_price)*100) : null;
+          {/* Visual demo grid — always show beautiful fashion */}
+          <p style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.3)', textTransform: 'uppercase', letterSpacing: '0.1em', marginTop: 24, marginBottom: 12 }}>✦ Featured this week</p>
+          <div style={{ columns: '2 auto', gap: 8 }}>
+            {buildDemoResults('', 'all', 0).slice(0, 8).map((p, i) => {
+              const disc = p.compare_price ? Math.round((1 - p.price / p.compare_price) * 100) : null;
               return (
-                <div key={p.id} style={{ background:'#111', borderRadius:14, overflow:'hidden', border:'1px solid rgba(255,255,255,0.06)' }}>
-                  <Link href={`/product/${p.id}`} style={{ display:'block', textDecoration:'none' }}>
-                    <div style={{ position:'relative', paddingTop:'130%', background:'#1a1a1a', overflow:'hidden' }}>
-                      {img ? <img src={img} alt={p.name} style={{ position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover' }} loading="lazy" /> :
-                        <div style={{ position:'absolute', inset:0, background:'linear-gradient(135deg,#1a1a2e,#16213e)', display:'flex', alignItems:'center', justifyContent:'center' }}>
-                          <span style={{ fontFamily:'serif', fontSize:'3rem', opacity:0.08, color:'#8B5CF6' }}>{p.name?.charAt(0)}</span>
-                        </div>}
-                      {disc && <span style={{ position:'absolute', top:8, left:8, background:'#ef4444', color:'#fff', fontSize:'0.6rem', fontWeight:700, padding:'2px 7px', borderRadius:50 }}>-{disc}%</span>}
-                      <div style={{ position:'absolute', top:8, right:8, background:'rgba(10,10,10,0.8)', borderRadius:50, padding:'2px 7px', fontSize:'0.65rem', color:'#fff', fontWeight:600 }}>
-                        ₦{Number(p.price).toLocaleString()}
-                      </div>
-                    </div>
-                  </Link>
-                  <div style={{ padding:'8px 10px 10px' }}>
-                    <div style={{ display:'flex', alignItems:'center', gap:4, marginBottom:3 }}>
-                      <p style={{ fontSize:'0.68rem', color:'rgba(255,255,255,0.35)', margin:0, flex:1 }}>{p.stores?.store_name}</p>
-                      {p.stores?.is_verified && <span style={{ fontSize:'0.55rem', color:'#3B82F6', background:'rgba(59,130,246,0.1)', borderRadius:50, padding:'1px 5px' }}>✓</span>}
-                    </div>
-                    <Link href={`/product/${p.id}`} style={{ textDecoration:'none' }}>
-                      <p style={{ fontSize:'0.82rem', color:'#fff', margin:'0 0 6px', lineHeight:1.3, overflow:'hidden', display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical' }}>{p.name}</p>
-                    </Link>
-                    <div style={{ display:'flex', gap:6 }}>
-                      <button onClick={() => addToCart(p)}
-                        style={{ flex:1, padding:'7px', borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'none', color:'rgba(255,255,255,0.5)', fontSize:'0.72rem', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', gap:4 }}>
-                        <ShoppingCart size={11} /> Add to Cart
-                      </button>
-                      <button onClick={() => setWishlist(prev => prev.includes(p.id)?prev.filter(i=>i!==p.id):[...prev,p.id])}
-                        style={{ width:32, height:32, borderRadius:10, border:'1px solid rgba(255,255,255,0.1)', background:'none', color:wishlist.includes(p.id)?'#ef4444':'rgba(255,255,255,0.3)', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
-                        <Heart size={12} fill={wishlist.includes(p.id)?'#ef4444':'none'} />
-                      </button>
+                <div key={p.id} onClick={() => { setInputVal(p.name.split(' ')[0]); handleSearch(p.name.split(' ')[0]); }}
+                  style={{ breakInside: 'avoid', marginBottom: 8, borderRadius: 12, overflow: 'hidden', cursor: 'pointer', position: 'relative', display: 'block' }}>
+                  <div style={{ position: 'relative', paddingTop: getVarHeight(i) }}>
+                    <img src={p.thumbnail} alt={p.name} loading="lazy"
+                      style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                      onError={(e: any) => { e.target.src = FASHION_IMAGES.general[i % FASHION_IMAGES.general.length]; }} />
+                    {disc && <span style={{ position: 'absolute', top: 6, left: 6, background: '#ef4444', color: '#fff', fontSize: '0.6rem', fontWeight: 700, padding: '2px 6px', borderRadius: 50 }}>-{disc}%</span>}
+                    <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, background: 'linear-gradient(to top,rgba(0,0,0,0.8),transparent)', padding: '20px 8px 7px' }}>
+                      <p style={{ fontSize: '0.72rem', fontWeight: 700, color: '#fff', margin: 0 }}>₦{p.price.toLocaleString()}</p>
                     </div>
                   </div>
                 </div>
               );
             })}
           </div>
-        )}
-      </div>
-      <style>{'::-webkit-scrollbar{width:0;height:0}'}</style>
+        </div>
+      )}
+
+      {/* RESULTS */}
+      {searched && (
+        <div style={{ padding: '10px 8px' }}>
+          {results.length > 0 && (
+            <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.3)', padding: '0 6px 8px' }}>
+              {results.length}+ results for <span style={{ color: GOLD }}>&ldquo;{query || category}&rdquo;</span>
+            </p>
+          )}
+
+          {/* Masonry grid */}
+          <div style={{ columns: '2 auto', gap: 8 }}>
+            {results.map((p, i) => {
+              const disc = p.compare_price ? Math.round((1 - p.price / p.compare_price) * 100) : null;
+              const isLiked = liked.has(p.id);
+              return (
+                <div key={`${p.id}-${i}`} style={{ breakInside: 'avoid', marginBottom: 8, borderRadius: 14, overflow: 'hidden', background: '#111', border: '1px solid rgba(255,255,255,0.06)', position: 'relative' }}>
+                  <Link href={p.isDemo ? '/auth/signup' : `/product/${p.id}`} style={{ display: 'block', textDecoration: 'none' }}>
+                    <div style={{ position: 'relative', paddingTop: getVarHeight(i) }}>
+                      <img src={p.thumbnail} alt={p.name} loading="lazy"
+                        style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }}
+                        onError={(e: any) => { e.target.src = FASHION_IMAGES.general[i % FASHION_IMAGES.general.length]; }} />
+                      {disc && <span style={{ position: 'absolute', top: 7, left: 7, background: '#ef4444', color: '#fff', fontSize: '0.6rem', fontWeight: 700, padding: '2px 7px', borderRadius: 50 }}>-{disc}%</span>}
+                      <button onClick={e => { e.preventDefault(); toggleLike(p.id); }}
+                        style={{ position: 'absolute', top: 7, right: 7, width: 30, height: 30, borderRadius: '50%', background: 'rgba(0,0,0,0.45)', backdropFilter: 'blur(6px)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <Heart size={13} fill={isLiked ? '#ef4444' : 'none'} style={{ color: isLiked ? '#ef4444' : '#fff' }} />
+                      </button>
+                    </div>
+                    <div style={{ padding: '8px 10px 10px' }}>
+                      <p style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.3)', margin: '0 0 3px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.store}</p>
+                      <p style={{ fontSize: '0.8rem', color: '#fff', margin: '0 0 5px', lineHeight: 1.3, display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{p.name}</p>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                        <span style={{ fontSize: '0.88rem', fontWeight: 700, color: '#fff' }}>₦{Number(p.price).toLocaleString()}</span>
+                        {p.compare_price && <span style={{ fontSize: '0.7rem', color: 'rgba(255,255,255,0.3)', textDecoration: 'line-through' }}>₦{Number(p.compare_price).toLocaleString()}</span>}
+                      </div>
+                    </div>
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Loader / end */}
+          <div ref={loaderRef} style={{ padding: '20px', textAlign: 'center' }}>
+            {loading && (
+              <div style={{ display: 'flex', justifyContent: 'center', gap: 6 }}>
+                {[0, 1, 2].map(i => (
+                  <div key={i} style={{ width: 6, height: 6, borderRadius: '50%', background: GOLD, animation: `bounce 1s ${i * 0.15}s infinite` }} />
+                ))}
+              </div>
+            )}
+            {!loading && !hasMore && results.length > 0 && (
+              <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.2)' }}>✦ You&apos;ve seen it all</p>
+            )}
+            {!loading && searched && results.length === 0 && (
+              <div style={{ textAlign: 'center', padding: '3rem 1rem' }}>
+                <p style={{ fontSize: '2rem', marginBottom: 10 }}>🔍</p>
+                <p style={{ fontSize: '1rem', color: '#fff', marginBottom: 6 }}>No results for &ldquo;{query}&rdquo;</p>
+                <p style={{ fontSize: '0.82rem', color: 'rgba(255,255,255,0.35)', marginBottom: 20 }}>Try different keywords or browse categories</p>
+                <button onClick={() => { setQuery(''); setInputVal(''); setResults([]); setSearched(false); }} style={{ padding: '10px 22px', borderRadius: 50, background: 'rgba(200,169,107,0.1)', border: '1px solid rgba(200,169,107,0.3)', color: GOLD, fontSize: '0.82rem', cursor: 'pointer' }}>
+                  Clear search
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      <style>{`
+        @keyframes bounce { 0%,80%,100%{transform:scale(0)} 40%{transform:scale(1)} }
+        ::-webkit-scrollbar{display:none}
+        *{-webkit-tap-highlight-color:transparent}
+      `}</style>
     </div>
   );
 }
 
 export default function SearchPage() {
-  return <Suspense fallback={<div style={{ minHeight:'100vh', background:'#0a0a0a', paddingTop:56, display:'flex', alignItems:'center', justifyContent:'center', color:'rgba(255,255,255,0.4)' }}>Searching...</div>}><SearchContent /></Suspense>;
+  return (
+    <Suspense fallback={
+      <div style={{ background: '#0a0a0a', minHeight: '100vh', padding: '1rem' }}>
+        <div style={{ height: 44, background: '#1a1a1a', borderRadius: 14, marginBottom: 16 }} />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+          {Array(8).fill(0).map((_, i) => <div key={i} style={{ height: i % 2 === 0 ? 240 : 190, background: '#1a1a1a', borderRadius: 14 }} />)}
+        </div>
+      </div>
+    }>
+      <SearchContent />
+    </Suspense>
+  );
 }
