@@ -12,11 +12,11 @@ export default function HomePage() {
   const [showSplash, setShowSplash] = useState(false);
   const [activeTab, setActiveTab] = useState('popular');
   const [activecat, setActivecat] = useState('All');
-  const [products, setProducts] = useState([]);
+  const [products, setProducts] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQ, setSearchQ] = useState('');
-  const [liked, setLiked] = useState([]);
-  const [saved, setSaved] = useState([]);
+  const [liked, setLiked] = useState<string[]>([]);
+  const [saved, setSaved] = useState<string[]>([]);
   const router = useRouter();
   const supabase = createClient();
 
@@ -35,12 +35,12 @@ export default function HomePage() {
     setLoading(false);
   };
 
-  const handleSearch = (e) => {
+  const handleSearch = (e: any) => {
     e.preventDefault();
     if (searchQ.trim()) router.push('/search?q=' + encodeURIComponent(searchQ));
   };
 
-  const col1 = [], col2 = [], col3 = [];
+  const col1: any[] = [], col2: any[] = [], col3: any[] = [];
   products.forEach((p, i) => {
     if (i % 3 === 0) col1.push(p);
     else if (i % 3 === 1) col2.push(p);
