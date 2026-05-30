@@ -2,156 +2,158 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── CSS Variables (Dark mode default) ── */
+/* ── Prevent white flash on load ── */
+html {
+  background: #0a0a0a;
+  scroll-behavior: smooth;
+}
+
+html[data-theme="light"] {
+  background: #f8f8f6;
+}
+
+/* ── CSS Variables ── */
 :root {
   --bg: #0a0a0a;
-  --bg-2: #111111;
-  --bg-3: #1a1a1a;
+  --bg2: #111111;
+  --bg3: #1a1a1a;
   --text: #ffffff;
-  --text-muted: rgba(255, 255, 255, 0.45);
-  --text-faint: rgba(255, 255, 255, 0.2);
-  --border: rgba(255, 255, 255, 0.07);
-  --border-strong: rgba(255, 255, 255, 0.15);
-  --gold: #C8A96B;
-  --gold-dim: rgba(200, 169, 107, 0.15);
+  --text-muted: rgba(255,255,255,0.45);
+  --text-faint: rgba(255,255,255,0.2);
+  --border: rgba(255,255,255,0.07);
+  --border-strong: rgba(255,255,255,0.15);
   --card: #111111;
-  --nav-bg: rgba(10, 10, 10, 0.96);
-  --input-bg: #1a1a1a;
+  --input: #1a1a1a;
+  --gold: #C8A96B;
+  --gold-dim: rgba(200,169,107,0.15);
+  --nav-bg: rgba(10,10,10,0.97);
   --skeleton: #1a1a1a;
-  --shadow: rgba(0, 0, 0, 0.4);
+  --shadow: rgba(0,0,0,0.5);
 }
 
-/* ── Light Mode ── */
 [data-theme="light"] {
   --bg: #f8f8f6;
-  --bg-2: #ffffff;
-  --bg-3: #f0f0ee;
+  --bg2: #ffffff;
+  --bg3: #f0f0ee;
   --text: #0a0a0a;
-  --text-muted: rgba(0, 0, 0, 0.5);
-  --text-faint: rgba(0, 0, 0, 0.28);
-  --border: rgba(0, 0, 0, 0.08);
-  --border-strong: rgba(0, 0, 0, 0.18);
-  --gold: #A8872A;
-  --gold-dim: rgba(168, 135, 42, 0.12);
+  --text-muted: rgba(0,0,0,0.5);
+  --text-faint: rgba(0,0,0,0.28);
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.2);
   --card: #ffffff;
-  --nav-bg: rgba(248, 248, 246, 0.96);
-  --input-bg: #f0f0ee;
+  --input: #f0f0ee;
+  --gold: #A8872A;
+  --gold-dim: rgba(168,135,42,0.12);
+  --nav-bg: rgba(248,248,246,0.97);
   --skeleton: #e8e8e6;
-  --shadow: rgba(0, 0, 0, 0.1);
+  --shadow: rgba(0,0,0,0.1);
 }
 
-/* ── Reset ── */
+/* ── Body ── */
 *, *::before, *::after {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
-}
-
-html {
-  scroll-behavior: smooth;
-  -webkit-text-size-adjust: 100%;
 }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--text);
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   transition: background 0.3s ease, color 0.3s ease;
   overflow-x: hidden;
+  /* Safe area */
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
-/* ── Scrollbar ── */
+/* ── No scrollbars ── */
 ::-webkit-scrollbar { width: 0; height: 0; }
 * { scrollbar-width: none; }
 
-/* ── Typography ── */
-h1, h2, h3, h4, h5, h6 { margin: 0; }
-p { margin: 0; }
+/* ── Typography reset ── */
+h1,h2,h3,h4,h5,h6,p { margin: 0; }
 a { color: inherit; }
 
-/* ── Skeleton loading animation ── */
+/* ── Autofill style fix ── */
+input:-webkit-autofill,
+input:-webkit-autofill:hover,
+input:-webkit-autofill:focus {
+  -webkit-box-shadow: 0 0 0 1000px var(--input) inset !important;
+  -webkit-text-fill-color: var(--text) !important;
+  transition: background-color 9999s ease;
+}
+
+/* ── Skeleton loader ── */
 @keyframes shimmer {
-  0% { background-position: -400px 0; }
-  100% { background-position: 400px 0; }
+  0%   { background-position: -800px 0; }
+  100% { background-position: 800px 0; }
 }
 
 .skeleton {
   background: linear-gradient(
     90deg,
     var(--skeleton) 25%,
-    color-mix(in srgb, var(--skeleton) 80%, var(--text) 20%) 50%,
+    rgba(255,255,255,0.04) 50%,
     var(--skeleton) 75%
   );
   background-size: 800px 100%;
-  animation: shimmer 1.4s ease-in-out infinite;
+  animation: shimmer 1.5s ease-in-out infinite;
   border-radius: 8px;
 }
 
-/* ── Spin animation ── */
-@keyframes spin {
-  to { transform: rotate(360deg); }
-}
+/* ── Keyframes ── */
+@keyframes spin         { to { transform: rotate(360deg); } }
+@keyframes fadeIn       { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideUp      { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes slideDown    { from { transform: translateY(-100%); } to { transform: translateY(0); } }
+@keyframes bounce       { 0%,80%,100% { transform: scale(0); } 40% { transform: scale(1); } }
+@keyframes pulse        { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+@keyframes scaleIn      { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
 
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(8px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+/* ── Utility classes ── */
+.fade-in    { animation: fadeIn 0.25s ease forwards; }
+.slide-up   { animation: slideUp 0.3s ease forwards; }
+.scale-in   { animation: scaleIn 0.2s ease forwards; }
 
-@keyframes slideUp {
-  from { opacity: 0; transform: translateY(20px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+/* ── Safe-area helpers ── */
+.safe-top    { padding-top:    env(safe-area-inset-top,    0px); }
+.safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
-@keyframes bounce {
-  0%, 80%, 100% { transform: scale(0); }
-  40% { transform: scale(1); }
-}
-
-@keyframes pulse {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.5; }
+/* ── Page bottom padding (for bottom nav) ── */
+.page-bottom {
+  padding-bottom: calc(72px + env(safe-area-inset-bottom, 0px));
 }
 
 /* ── Images ── */
-img {
-  max-width: 100%;
-  display: block;
-}
+img { max-width: 100%; display: block; }
 
-/* ── Input reset ── */
-input, textarea, select, button {
-  font-family: inherit;
-}
-
-input:-webkit-autofill,
-input:-webkit-autofill:hover,
-input:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0px 1000px var(--input-bg) inset !important;
-  -webkit-text-fill-color: var(--text) !important;
-  transition: background-color 5000s ease-in-out 0s;
-}
-
-/* ── Safe area padding ── */
-.pb-safe {
-  padding-bottom: max(80px, calc(60px + env(safe-area-inset-bottom, 0px)));
-}
+/* ── Buttons ── */
+button { font-family: inherit; cursor: pointer; }
+input, textarea, select { font-family: inherit; }
 
 /* ── Glass card ── */
 .glass {
-  background: rgba(255, 255, 255, 0.04);
+  background: rgba(255,255,255,0.04);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border);
 }
 
-/* ── Page fade-in ── */
-main, .page-content {
-  animation: fadeIn 0.25s ease forwards;
+/* ── Status bar area — NO lines ── */
+.navbar-wrapper {
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  /* No border-bottom — seamless with status bar */
 }
 
-/* ── Mobile bottom nav spacing ── */
-.has-bottom-nav {
-  padding-bottom: calc(64px + env(safe-area-inset-bottom, 0px));
+/* ── Mobile full-screen fix ── */
+@supports (padding: max(0px)) {
+  body {
+    padding-left:  env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
 }

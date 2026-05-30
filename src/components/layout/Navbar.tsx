@@ -1,236 +1,287 @@
 'use client';
-import { useState, useEffect } from 'react';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { ShoppingCart, Heart, User, Search, Menu, X, Sparkles, Bell } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { useState, useEffect, useRef } from 'react';
 import { createClient } from '@/lib/supabase';
-import { useCartStore } from '@/store/cart';
+
+const GOLD = '#C8A96B';
+
+// ── Custom SVG icon components ──────────────────────────────
+const BellIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+  </svg>
+);
+
+const ChatBubbleIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+  </svg>
+);
+
+const PersonIcon = () => (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+
+const SearchIcon = () => (
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="11" cy="11" r="8" />
+    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+  </svg>
+);
+
+const XIcon = () => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
+    <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+  </svg>
+);
+
+interface Suggestion {
+  type: 'product' | 'user' | 'category';
+  id: string;
+  label: string;
+  sub?: string;
+  href: string;
+}
 
 export default function Navbar() {
-  const [scrolled, setScrolled] = useState(false);
-  const [menuOpen, setMenuOpen] = useState(false);
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<any>(null);
-  const [searchOpen, setSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [unreadNotifs, setUnreadNotifs] = useState(0);
-  const [dropdownOpen, setDropdownOpen] = useState(false);
+  const pathname = usePathname();
   const router = useRouter();
   const supabase = createClient();
-  const cartCount = useCartStore(s => s.items.reduce((a, i) => a + i.quantity, 0));
+
+  const [query, setQuery] = useState('');
+  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
+  const [showDrop, setShowDrop] = useState(false);
+  const [searching, setSearching] = useState(false);
+  const [unreadNotifs, setUnreadNotifs] = useState(0);
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropRef = useRef<HTMLDivElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout>();
+
+  // Hide on auth pages
+  const hideOn = ['/auth/', '/splash'];
+  if (hideOn.some(p => pathname.startsWith(p))) return null;
 
   useEffect(() => {
-    window.addEventListener('scroll', () => setScrolled(window.scrollY > 50));
-    supabase.auth.getSession().then(({ data }) => {
-      setUser(data.session?.user ?? null);
-      if (data.session?.user) loadProfile(data.session.user.id);
-    });
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_, session) => {
-      setUser(session?.user ?? null);
-      if (session?.user) loadProfile(session.user.id);
-      else { setProfile(null); setUnreadNotifs(0); }
-    });
-    return () => subscription.unsubscribe();
+    loadBadges();
   }, []);
 
-  const loadProfile = async (userId: string) => {
-    const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    setProfile(data);
-    // Count unread notifications
-    const { count } = await supabase.from('notifications').select('id', { count: 'exact', head: true }).eq('user_id', userId).eq('is_read', false);
-    setUnreadNotifs(count || 0);
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropRef.current && !dropRef.current.contains(e.target as Node) && inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setShowDrop(false);
+      }
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, []);
+
+  const loadBadges = async () => {
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) return;
+      const [{ count: n }, { count: m }] = await Promise.all([
+        supabase.from('notifications').select('*', { count: 'exact', head: true }).eq('user_id', session.user.id).eq('is_read', false),
+        supabase.from('messages').select('*', { count: 'exact', head: true }).eq('receiver_id', session.user.id).eq('is_read', false),
+      ]);
+      setUnreadNotifs(n || 0);
+      setUnreadMsgs(m || 0);
+    } catch { /* badges optional */ }
   };
 
-  const handleSearch = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (searchQuery.trim()) {
-      router.push(`/marketplace?q=${encodeURIComponent(searchQuery)}`);
-      setSearchOpen(false);
-      setSearchQuery('');
-    }
+  const handleSearch = (val: string) => {
+    setQuery(val);
+    clearTimeout(debounceRef.current);
+    if (!val.trim()) { setSuggestions([]); setShowDrop(false); return; }
+
+    debounceRef.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        // Search products
+        const { data: products } = await supabase
+          .from('products')
+          .select('id,name,category')
+          .ilike('name', `%${val}%`)
+          .eq('is_active', true)
+          .limit(4);
+
+        // Search users/stores
+        const { data: stores } = await supabase
+          .from('stores')
+          .select('id,store_name,store_slug')
+          .ilike('store_name', `%${val}%`)
+          .limit(3);
+
+        const results: Suggestion[] = [
+          ...(products || []).map((p: any) => ({
+            type: 'product' as const, id: p.id, label: p.name,
+            sub: p.category, href: `/product/${p.id}`,
+          })),
+          ...(stores || []).map((s: any) => ({
+            type: 'user' as const, id: s.id, label: s.store_name,
+            sub: 'Store', href: `/seller/${s.store_slug}`,
+          })),
+        ];
+
+        // Add category suggestions
+        const cats = ['Dresses', 'Shoes', 'Bags', 'Streetwear', 'Watches', 'Accessories', 'Native Wear', 'Luxury'];
+        const matchCat = cats.filter(c => c.toLowerCase().includes(val.toLowerCase())).slice(0, 2);
+        matchCat.forEach(c => results.push({ type: 'category', id: c, label: c, sub: 'Category', href: `/search?q=${encodeURIComponent(c)}` }));
+
+        // If no DB results, show smart suggestions
+        if (results.length === 0) {
+          results.push({ type: 'category', id: 'search', label: `Search "${val}"`, sub: 'Press enter', href: `/search?q=${encodeURIComponent(val)}` });
+        }
+
+        setSuggestions(results.slice(0, 7));
+        setShowDrop(true);
+      } catch {
+        setSuggestions([{ type: 'category', id: 'search', label: `Search "${val}"`, sub: 'Press enter', href: `/search?q=${encodeURIComponent(val)}` }]);
+        setShowDrop(true);
+      }
+      setSearching(false);
+    }, 280);
   };
 
-  const handleSignOut = async () => {
-    await supabase.auth.signOut();
-    router.push('/');
-    setDropdownOpen(false);
+  const submitSearch = () => {
+    if (!query.trim()) return;
+    setShowDrop(false);
+    router.push(`/search?q=${encodeURIComponent(query.trim())}`);
+    inputRef.current?.blur();
   };
+
+  const typeIcon = (type: string) => type === 'product' ? '◈' : type === 'user' ? '◎' : '◇';
 
   return (
-    <>
-      <nav style={{
-        position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        height: 70,
-        background: scrolled ? 'rgba(5,5,5,0.97)' : 'rgba(5,5,5,0.6)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
-        borderBottom: `1px solid ${scrolled ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.04)'}`,
-        transition: 'all 0.3s ease',
-        display: 'flex', alignItems: 'center',
-        padding: '0 3rem',
-        gap: '2rem',
+    <div style={{
+      position: 'sticky', top: 0, zIndex: 100,
+      // No border-bottom — seamless with status bar
+      background: 'rgba(10,10,10,0.98)',
+      backdropFilter: 'blur(20px)',
+      WebkitBackdropFilter: 'blur(20px)',
+      // Safe area + slight padding
+      paddingTop: 'env(safe-area-inset-top, 0px)',
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 8,
+        padding: '8px 12px',
+        height: 52,
       }}>
         {/* Logo */}
-        <Link href="/" style={{ fontFamily: 'serif', fontSize: '1.6rem', fontWeight: 300, letterSpacing: '0.3em', color: '#fff', textDecoration: 'none', flexShrink: 0 }}>
-          VE<span style={{ color: '#C8A96B' }}>Y</span>RA
+        <Link href="/" style={{ textDecoration: 'none', flexShrink: 0, marginRight: 2 }}>
+          <span style={{
+            fontFamily: 'Georgia, serif', fontSize: '1.15rem',
+            fontWeight: 300, letterSpacing: '0.22em',
+            color: '#fff', paddingRight: '0.22em',
+          }}>
+            VE<span style={{ color: GOLD }}>Y</span>RA
+          </span>
         </Link>
 
-        {/* Desktop nav */}
-        <ul style={{ display: 'flex', gap: '2rem', listStyle: 'none', margin: 0, padding: 0, flex: 1 }} className="hidden lg:flex">
-          {[
-            { href: '/marketplace', label: 'Marketplace' },
-            { href: '/ai-stylist', label: 'AI Stylist' },
-            { href: '/marketplace?category=streetwear', label: 'Streetwear' },
-            { href: '/marketplace?category=luxury', label: 'Luxury' },
-          ].map(({ href, label }) => (
-            <li key={href}>
-              <Link href={href} style={{ color: 'rgba(255,255,255,0.5)', textDecoration: 'none', fontSize: '0.82rem', letterSpacing: '0.08em', textTransform: 'uppercase', transition: 'color 0.2s' }}
-                onMouseEnter={e => { (e.target as HTMLElement).style.color = '#fff'; }}
-                onMouseLeave={e => { (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.5)'; }}>
-                {label}
-              </Link>
-            </li>
-          ))}
-        </ul>
+        {/* Search bar */}
+        <div style={{ flex: 1, position: 'relative' }}>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'rgba(255,255,255,0.07)', borderRadius: 50,
+            padding: '0 12px', border: '1px solid rgba(255,255,255,0.08)',
+            height: 36,
+          }}>
+            <SearchIcon />
+            <input
+              ref={inputRef}
+              value={query}
+              onChange={e => handleSearch(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') submitSearch(); if (e.key === 'Escape') { setShowDrop(false); inputRef.current?.blur(); } }}
+              onFocus={() => { if (query && suggestions.length > 0) setShowDrop(true); }}
+              placeholder="Search fashion, sellers…"
+              style={{
+                flex: 1, background: 'none', border: 'none', outline: 'none',
+                color: '#fff', fontSize: '0.82rem',
+                caretColor: GOLD,
+              }}
+            />
+            {query && (
+              <button onClick={() => { setQuery(''); setSuggestions([]); setShowDrop(false); inputRef.current?.focus(); }}
+                style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.3)', cursor: 'pointer', padding: 0, display: 'flex' }}>
+                <XIcon />
+              </button>
+            )}
+            {searching && (
+              <div style={{ width: 12, height: 12, border: '1.5px solid rgba(200,169,107,0.3)', borderTopColor: GOLD, borderRadius: '50%', animation: 'nav-spin 0.6s linear infinite', flexShrink: 0 }} />
+            )}
+          </div>
 
-        {/* Actions */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginLeft: 'auto' }}>
-          {/* Search */}
-          <button onClick={() => setSearchOpen(true)} style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', cursor: 'pointer', borderRadius: '50%', transition: 'color 0.2s' }}
-            onMouseEnter={e => { (e.target as HTMLElement).style.color = '#fff'; }}
-            onMouseLeave={e => { (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.5)'; }}>
-            <Search size={18} />
-          </button>
+          {/* Dropdown suggestions */}
+          {showDrop && suggestions.length > 0 && (
+            <div ref={dropRef} style={{
+              position: 'absolute', top: 'calc(100% + 6px)', left: 0, right: 0, zIndex: 200,
+              background: '#111', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 16,
+              overflow: 'hidden', boxShadow: '0 16px 40px rgba(0,0,0,0.6)',
+              animation: 'nav-fade 0.15s ease',
+            }}>
+              {suggestions.map((s, i) => (
+                <div key={`${s.id}-${i}`}
+                  onClick={() => { setShowDrop(false); setQuery(''); router.push(s.href); }}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: 10,
+                    padding: '10px 14px', cursor: 'pointer', borderBottom: i < suggestions.length - 1 ? '1px solid rgba(255,255,255,0.05)' : 'none',
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.04)')}
+                  onMouseLeave={e => (e.currentTarget.style.background = 'none')}
+                >
+                  <span style={{ fontSize: '0.75rem', color: s.type === 'product' ? GOLD : s.type === 'user' ? '#8B5CF6' : '#3B82F6', flexShrink: 0 }}>
+                    {typeIcon(s.type)}
+                  </span>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <p style={{ fontSize: '0.85rem', color: '#fff', margin: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{s.label}</p>
+                    {s.sub && <p style={{ fontSize: '0.68rem', color: 'rgba(255,255,255,0.35)', margin: 0, textTransform: 'capitalize' }}>{s.sub}</p>}
+                  </div>
+                  <span style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)', flexShrink: 0 }}>→</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
 
-          {/* Cart */}
-          <Link href="/cart" style={{ position: 'relative', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', transition: 'color 0.2s' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.color = '#fff'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.color = 'rgba(255,255,255,0.5)'; }}>
-            <ShoppingCart size={18} />
-            {cartCount > 0 && (
-              <span style={{ position: 'absolute', top: 1, right: 1, background: '#C8A96B', color: '#0B0B0B', fontSize: 9, fontWeight: 700, borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                {cartCount}
+        {/* Action icons */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 2, flexShrink: 0 }}>
+          {/* Notifications */}
+          <Link href="/notifications" style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', textDecoration: 'none' }}>
+            <BellIcon />
+            {unreadNotifs > 0 && (
+              <span style={{ position: 'absolute', top: 4, right: 4, width: 14, height: 14, borderRadius: '50%', background: GOLD, border: '1.5px solid #0a0a0a', fontSize: '0.5rem', color: '#000', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {unreadNotifs > 9 ? '9+' : unreadNotifs}
               </span>
             )}
           </Link>
 
-          {/* Notifications */}
-          {user && (
-            <Link href="/notifications" style={{ position: 'relative', width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.5)', transition: 'color 0.2s' }}>
-              <Bell size={18} />
-              {unreadNotifs > 0 && (
-                <span style={{ position: 'absolute', top: 1, right: 1, background: '#ef4444', color: '#fff', fontSize: 9, fontWeight: 700, borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  {unreadNotifs > 9 ? '9+' : unreadNotifs}
-                </span>
-              )}
-            </Link>
-          )}
+          {/* Messages */}
+          <Link href="/messages" style={{ position: 'relative', width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'rgba(255,255,255,0.55)', textDecoration: 'none' }}>
+            <ChatBubbleIcon />
+            {unreadMsgs > 0 && (
+              <span style={{ position: 'absolute', top: 4, right: 4, width: 14, height: 14, borderRadius: '50%', background: '#ef4444', border: '1.5px solid #0a0a0a', fontSize: '0.5rem', color: '#fff', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {unreadMsgs > 9 ? '9+' : unreadMsgs}
+              </span>
+            )}
+          </Link>
 
-          {/* User */}
-          {user ? (
-            <div style={{ position: 'relative' }}>
-              <button onClick={() => setDropdownOpen(!dropdownOpen)}
-                style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 50, padding: '6px 12px 6px 6px', cursor: 'pointer', transition: 'background 0.2s' }}>
-                <div style={{ width: 26, height: 26, borderRadius: '50%', background: 'linear-gradient(135deg, #8B5CF6, #3B82F6)', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', flexShrink: 0 }}>
-                  {profile?.avatar_url ? <img src={profile.avatar_url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="" /> : <span style={{ fontSize: '0.7rem', fontWeight: 600, color: '#fff' }}>{profile?.full_name?.charAt(0) || '?'}</span>}
-                </div>
-                <span style={{ fontSize: '0.8rem', color: '#fff', maxWidth: 80, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {profile?.full_name?.split(' ')[0] || user.email?.split('@')[0]}
-                </span>
-              </button>
-
-              {dropdownOpen && (
-                <>
-                  <div onClick={() => setDropdownOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 99 }} />
-                  <div style={{
-                    position: 'absolute', right: 0, top: 'calc(100% + 8px)',
-                    width: 220, background: '#111', border: '1px solid rgba(255,255,255,0.1)',
-                    borderRadius: 16, padding: '8px 0', zIndex: 100,
-                    boxShadow: '0 20px 40px rgba(0,0,0,0.5)',
-                  }}>
-                    <div style={{ padding: '10px 16px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)' }}>
-                      <p style={{ fontSize: '0.85rem', fontWeight: 500, color: '#fff' }}>{profile?.full_name}</p>
-                      <p style={{ fontSize: '0.72rem', color: 'rgba(255,255,255,0.4)' }}>@{profile?.username}</p>
-                    </div>
-                    {[
-                      { label: '👤 My Profile', href: '/profile' },
-                      { label: '📦 My Orders', href: '/profile?tab=orders' },
-                      { label: '♡ Wishlist', href: '/profile?tab=wishlist' },
-                      { label: '🏪 Seller Dashboard', href: '/dashboard/seller' },
-                      { label: '⚙️ Settings', href: '/settings' },
-                    ].map(item => (
-                      <Link key={item.href} href={item.href} onClick={() => setDropdownOpen(false)}
-                        style={{ display: 'block', padding: '9px 16px', fontSize: '0.85rem', color: 'rgba(255,255,255,0.6)', textDecoration: 'none', transition: 'all 0.15s' }}
-                        onMouseEnter={e => { (e.target as HTMLElement).style.color = '#fff'; (e.target as HTMLElement).style.background = 'rgba(255,255,255,0.04)'; }}
-                        onMouseLeave={e => { (e.target as HTMLElement).style.color = 'rgba(255,255,255,0.6)'; (e.target as HTMLElement).style.background = 'none'; }}>
-                        {item.label}
-                      </Link>
-                    ))}
-                    <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', marginTop: 4 }}>
-                      <button onClick={handleSignOut}
-                        style={{ width: '100%', textAlign: 'left', padding: '9px 16px', fontSize: '0.85rem', color: '#ef4444', background: 'none', border: 'none', cursor: 'pointer', transition: 'background 0.15s' }}
-                        onMouseEnter={e => { (e.target as HTMLElement).style.background = 'rgba(239,68,68,0.08)'; }}
-                        onMouseLeave={e => { (e.target as HTMLElement).style.background = 'none'; }}>
-                        🚪 Sign Out
-                      </button>
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          ) : (
-            <div className="hidden md:flex items-center gap-2">
-              <Link href="/auth/login" className="btn-ghost !py-2 !px-4 text-sm">Login</Link>
-              <Link href="/auth/signup" className="btn-primary !py-2 !px-4 text-sm">Sign Up</Link>
-            </div>
-          )}
-
-          {/* Mobile menu */}
-          <button onClick={() => setMenuOpen(!menuOpen)} className="lg:hidden" style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.6)', cursor: 'pointer', padding: 4 }}>
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
-          </button>
+          {/* Profile */}
+          <Link href="/profile" style={{ width: 36, height: 36, borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: pathname === '/profile' ? GOLD : 'rgba(255,255,255,0.55)', textDecoration: 'none' }}>
+            <PersonIcon />
+          </Link>
         </div>
-      </nav>
+      </div>
 
-      {/* Mobile menu */}
-      {menuOpen && (
-        <div style={{ position: 'fixed', top: 70, left: 0, right: 0, background: '#0a0a0a', borderBottom: '1px solid rgba(255,255,255,0.08)', padding: '1.5rem', zIndex: 99, display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {[
-            { href: '/marketplace', label: 'Marketplace' },
-            { href: '/ai-stylist', label: '✦ AI Stylist' },
-            { href: '/marketplace?category=streetwear', label: 'Streetwear' },
-            { href: '/marketplace?category=luxury', label: 'Luxury' },
-            { href: '/cart', label: `🛒 Cart (${cartCount})` },
-            { href: '/notifications', label: '🔔 Notifications' },
-          ].map(({ href, label }) => (
-            <Link key={href} href={href} onClick={() => setMenuOpen(false)}
-              style={{ color: 'rgba(255,255,255,0.6)', textDecoration: 'none', fontSize: '1rem', padding: '4px 0' }}>
-              {label}
-            </Link>
-          ))}
-          {!user && (
-            <div style={{ display: 'flex', gap: 12, paddingTop: 8 }}>
-              <Link href="/auth/login" className="btn-secondary flex-1 justify-center text-sm !py-2" onClick={() => setMenuOpen(false)}>Login</Link>
-              <Link href="/auth/signup" className="btn-primary flex-1 justify-center text-sm !py-2" onClick={() => setMenuOpen(false)}>Sign Up</Link>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Search overlay */}
-      {searchOpen && (
-        <div onClick={() => setSearchOpen(false)}
-          style={{ position: 'fixed', inset: 0, zIndex: 200, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(8px)', display: 'flex', alignItems: 'flex-start', justifyContent: 'center', paddingTop: '12rem', padding: '12rem 1.5rem 0' }}>
-          <form onSubmit={handleSearch} onClick={e => e.stopPropagation()}
-            style={{ width: '100%', maxWidth: 640, display: 'flex', gap: 12, background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.15)', borderRadius: 16, padding: 8 }}>
-            <Search size={20} style={{ color: 'rgba(255,255,255,0.4)', alignSelf: 'center', marginLeft: 8, flexShrink: 0 }} />
-            <input autoFocus value={searchQuery} onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search fashion, brands, styles…"
-              style={{ flex: 1, background: 'transparent', border: 'none', outline: 'none', color: '#fff', fontSize: '1.1rem', padding: '8px 0' }} />
-            <button type="submit" className="btn-primary !py-2 !px-4 text-sm flex-shrink-0">Search</button>
-          </form>
-        </div>
-      )}
-    </>
+      <style>{`
+        @keyframes nav-spin { to { transform: rotate(360deg); } }
+        @keyframes nav-fade { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+    </div>
   );
 }

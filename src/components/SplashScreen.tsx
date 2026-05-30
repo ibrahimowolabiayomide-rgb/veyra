@@ -1,184 +1,105 @@
 'use client';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 
 export default function SplashScreen({ onComplete }: { onComplete: () => void }) {
-  const [phase, setPhase] = useState<'logo' | 'tagline' | 'enter' | 'exit'>('logo');
+  const [phase, setPhase] = useState<'hidden' | 'in' | 'hold' | 'out'>('hidden');
 
   useEffect(() => {
-    const t1 = setTimeout(() => setPhase('tagline'), 1200);
-    const t2 = setTimeout(() => setPhase('enter'), 2600);
-    return () => { clearTimeout(t1); clearTimeout(t2); };
-  }, []);
-
-  const handleEnter = () => {
-    setPhase('exit');
-    setTimeout(onComplete, 800);
-  };
-
-  // Auto-enter after 5s
-  useEffect(() => {
-    const t = setTimeout(handleEnter, 5000);
-    return () => clearTimeout(t);
-  }, []);
+    // Stagger: hidden → in → hold → out → done
+    const t0 = setTimeout(() => setPhase('in'), 50);
+    const t1 = setTimeout(() => setPhase('hold'), 700);
+    const t2 = setTimeout(() => setPhase('out'), 2200);
+    const t3 = setTimeout(() => onComplete(), 2900);
+    return () => { clearTimeout(t0); clearTimeout(t1); clearTimeout(t2); clearTimeout(t3); };
+  }, [onComplete]);
 
   return (
-    <div
-      onClick={handleEnter}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9999,
-        background: '#000',
-        display: 'flex', flexDirection: 'column',
-        alignItems: 'center', justifyContent: 'center',
-        cursor: 'pointer',
-        opacity: phase === 'exit' ? 0 : 1,
-        transition: phase === 'exit' ? 'opacity 0.8s ease' : 'none',
-        overflow: 'hidden',
-      }}
-    >
-      {/* Cinematic background gradient animation */}
+    <div style={{
+      position: 'fixed', inset: 0, zIndex: 99999,
+      background: '#0a0a0a',
+      display: 'flex', flexDirection: 'column',
+      alignItems: 'center', justifyContent: 'center',
+      opacity: phase === 'out' ? 0 : 1,
+      transition: phase === 'out' ? 'opacity 0.7s ease' : 'none',
+      pointerEvents: phase === 'out' ? 'none' : 'all',
+    }}>
+      {/* Ambient glow — only on hold */}
       <div style={{
         position: 'absolute', inset: 0,
-        background: 'radial-gradient(ellipse 120% 80% at 50% 60%, rgba(88,28,135,0.25) 0%, rgba(30,27,75,0.15) 40%, transparent 70%)',
-        animation: 'breathe 4s ease-in-out infinite',
+        background: 'radial-gradient(ellipse 50% 35% at 50% 50%, rgba(200,169,107,0.07) 0%, transparent 70%)',
+        opacity: phase === 'hold' || phase === 'out' ? 1 : 0,
+        transition: 'opacity 1s ease',
       }} />
 
-      {/* Grid lines */}
+      {/* Logo container */}
       <div style={{
-        position: 'absolute', inset: 0,
-        backgroundImage: 'linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px)',
-        backgroundSize: '80px 80px',
-        maskImage: 'radial-gradient(ellipse 70% 70% at 50% 50%, black 0%, transparent 100%)',
-      }} />
-
-      {/* Glow orb */}
-      <div style={{
-        position: 'absolute',
-        width: 400, height: 400,
-        borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(139,92,246,0.15) 0%, transparent 70%)',
-        filter: 'blur(40px)',
-        animation: 'pulse 3s ease-in-out infinite',
-      }} />
-
-      {/* Logo */}
-      <div style={{
-        position: 'relative', zIndex: 2, textAlign: 'center',
-        opacity: phase === 'logo' || phase === 'tagline' || phase === 'enter' ? 1 : 0,
-        transform: phase === 'logo' ? 'scale(0.8)' : 'scale(1)',
-        transition: 'all 1s cubic-bezier(0.16, 1, 0.3, 1)',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12,
+        opacity: phase === 'hidden' ? 0 : 1,
+        transform: phase === 'hidden' ? 'translateY(12px) scale(0.96)' : 'translateY(0) scale(1)',
+        transition: 'opacity 0.6s ease, transform 0.6s cubic-bezier(0.16,1,0.3,1)',
       }}>
-        {/* V Logo image */}
-        <div style={{
-          width: 100, height: 100,
-          margin: '0 auto 24px',
-          borderRadius: 24,
-          overflow: 'hidden',
-          boxShadow: '0 0 60px rgba(139,92,246,0.4), 0 0 120px rgba(139,92,246,0.2)',
-          opacity: phase === 'logo' ? 0 : 1,
-          transform: phase === 'logo' ? 'scale(0.5) translateY(20px)' : 'scale(1) translateY(0)',
-          transition: 'all 0.8s cubic-bezier(0.16, 1, 0.3, 1)',
-        }}>
-          <img src="/icons/icon-192.png" alt="VEYRA" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>
-
-        {/* Brand name */}
-        <div style={{
-          fontFamily: 'serif',
-          fontSize: 'clamp(3rem, 8vw, 6rem)',
-          fontWeight: 300,
-          letterSpacing: '0.4em',
-          color: '#fff',
-          opacity: phase === 'logo' ? 0 : 1,
-          transform: phase === 'logo' ? 'translateY(30px)' : 'translateY(0)',
-          transition: 'all 0.8s 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
-          textShadow: '0 0 40px rgba(255,255,255,0.2)',
-        }}>
-          VEYRA
+        {/* Logo — 20% of screen height max */}
+        <div style={{ textAlign: 'center' }}>
+          <p style={{
+            fontFamily: 'Georgia, "Times New Roman", serif',
+            fontSize: 'clamp(2rem, 10vw, 3.2rem)',
+            fontWeight: 300,
+            letterSpacing: '0.45em',
+            color: '#fff',
+            margin: 0,
+            paddingRight: '0.45em',
+            lineHeight: 1,
+          }}>
+            VE<span style={{ color: '#C8A96B' }}>Y</span>RA
+          </p>
         </div>
 
         {/* Tagline */}
-        <div style={{
-          fontFamily: 'sans-serif',
-          fontSize: 'clamp(0.8rem, 2vw, 1rem)',
-          letterSpacing: '0.25em',
-          color: 'rgba(255,255,255,0.4)',
+        <p style={{
+          fontSize: 'clamp(0.55rem, 2.5vw, 0.7rem)',
+          letterSpacing: '0.28em',
           textTransform: 'uppercase',
-          marginTop: 12,
-          opacity: phase === 'tagline' || phase === 'enter' ? 1 : 0,
-          transform: phase === 'tagline' || phase === 'enter' ? 'translateY(0)' : 'translateY(10px)',
-          transition: 'all 0.6s ease',
+          color: 'rgba(255,255,255,0.28)',
+          margin: 0,
+          paddingRight: '0.28em',
+          opacity: phase === 'hold' || phase === 'out' ? 1 : 0,
+          transition: 'opacity 0.6s ease 0.2s',
         }}>
           Fashion Meets Intelligence
-        </div>
+        </p>
+      </div>
 
-        {/* Second tagline */}
+      {/* Spinner */}
+      <div style={{
+        position: 'absolute', bottom: '12vh',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 10,
+        opacity: phase === 'hold' || phase === 'out' ? 1 : 0,
+        transition: 'opacity 0.5s ease 0.3s',
+      }}>
         <div style={{
-          fontFamily: 'sans-serif',
-          fontSize: 'clamp(0.7rem, 1.5vw, 0.85rem)',
-          letterSpacing: '0.2em',
-          color: 'rgba(200,169,107,0.7)',
-          textTransform: 'uppercase',
-          marginTop: 8,
-          opacity: phase === 'enter' ? 1 : 0,
-          transition: 'all 0.6s 0.2s ease',
-        }}>
-          Shop. Sell. Inspire.
-        </div>
+          width: 20, height: 20,
+          border: '1.5px solid rgba(200,169,107,0.25)',
+          borderTopColor: '#C8A96B',
+          borderRadius: '50%',
+          animation: 'splash-spin 0.9s linear infinite',
+        }} />
+        <p style={{ fontSize: '0.65rem', color: 'rgba(255,255,255,0.2)', letterSpacing: '0.15em', margin: 0 }}>
+          Loading…
+        </p>
+      </div>
 
-        {/* Enter button */}
-        <button
-          onClick={handleEnter}
-          style={{
-            marginTop: 48,
-            background: 'transparent',
-            border: '1px solid rgba(200,169,107,0.4)',
-            color: '#C8A96B',
-            padding: '14px 48px',
-            borderRadius: 50,
-            fontFamily: 'sans-serif',
-            fontSize: '0.85rem',
-            letterSpacing: '0.2em',
-            textTransform: 'uppercase',
-            cursor: 'pointer',
-            opacity: phase === 'enter' ? 1 : 0,
-            transform: phase === 'enter' ? 'translateY(0)' : 'translateY(20px)',
-            transition: 'all 0.6s 0.3s ease, background 0.2s, border-color 0.2s',
-            boxShadow: '0 0 30px rgba(200,169,107,0.15)',
-          }}
-          onMouseEnter={e => {
-            (e.target as HTMLElement).style.background = 'rgba(200,169,107,0.1)';
-            (e.target as HTMLElement).style.borderColor = 'rgba(200,169,107,0.8)';
-          }}
-          onMouseLeave={e => {
-            (e.target as HTMLElement).style.background = 'transparent';
-            (e.target as HTMLElement).style.borderColor = 'rgba(200,169,107,0.4)';
-          }}
-        >
-          Enter VEYRA
-        </button>
-
-        {/* Skip hint */}
+      {/* Bottom progress line */}
+      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, height: 1.5, background: 'rgba(255,255,255,0.04)' }}>
         <div style={{
-          marginTop: 24,
-          fontSize: '0.7rem',
-          color: 'rgba(255,255,255,0.2)',
-          letterSpacing: '0.1em',
-          opacity: phase === 'enter' ? 1 : 0,
-          transition: 'opacity 0.6s 0.5s ease',
-        }}>
-          TAP ANYWHERE TO SKIP
-        </div>
+          height: '100%',
+          background: 'linear-gradient(90deg, transparent, #C8A96B 50%, transparent)',
+          width: phase === 'hold' || phase === 'out' ? '100%' : '0%',
+          transition: 'width 1.6s ease',
+        }} />
       </div>
 
       <style>{`
-        @keyframes breathe {
-          0%, 100% { transform: scale(1); opacity: 0.8; }
-          50% { transform: scale(1.1); opacity: 1; }
-        }
-        @keyframes pulse {
-          0%, 100% { transform: scale(0.9); opacity: 0.5; }
-          50% { transform: scale(1.1); opacity: 1; }
-        }
+        @keyframes splash-spin { to { transform: rotate(360deg); } }
       `}</style>
     </div>
   );
